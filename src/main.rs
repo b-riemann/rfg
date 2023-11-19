@@ -1,26 +1,10 @@
 use std::{fs::read, collections::HashMap};
 use memchr::memmem;
 use std::cmp::min;
+use huffman_coding;
+use std::io::Write;
 use simple_bar::ProgressBar;
-
-fn generate_probcodes(file: &[u8], markov_order: usize) -> Vec<u8> {
-    let mut bar = ProgressBar::default(file.len() as u32, 50, true);
-
-    let mut probcodes: Vec<u8> = Vec::new();
-
-    bar.update();
-    for n in 1..file.len() {
-        //print!("n{} ", n);
-        let rotund = make_rotund(&file[..n], markov_order);
-        //println!("rotund{} {}", rotund.len(), String::from_utf8_lossy(&rotund[..16]));
-
-        let target_u8 = file[n]; 
-        probcodes.push( rotund.iter().position(|&x| x == target_u8).unwrap() as u8 );
-        bar.update();
-    }
-    probcodes
-}
-
+use std::env;
 
 fn make_rotund(content: &[u8], markov_order: usize) -> Vec<u8> {
     //rotund is a permutation of the range 0..256. It is ordered so that bytes with highest probability occur first.
@@ -69,11 +53,54 @@ fn make_rotund(content: &[u8], markov_order: usize) -> Vec<u8> {
     rotund
 }
 
+fn generate_probcodes(file: &[u8], markov_order: usize) -> Vec<u8> {
+    let mut bar = ProgressBar::default(file.len() as u32, 50, true);
+
+    let mut probcodes: Vec<u8> = Vec::new();
+
+    bar.update();
+    for n in 1..file.len() {
+        //print!("n{} ", n);
+        let rotund = make_rotund(&file[..n], markov_order);
+        //println!("rotund{} {}", rotund.len(), String::from_utf8_lossy(&rotund[..16]));
+
+        let target_u8 = file[n]; 
+        probcodes.push( rotund.iter().position(|&x| x == target_u8).unwrap() as u8 );
+        bar.update();
+    }
+    probcodes
+}
+
 fn main() {
-    let file = read("../enwik9").unwrap();
-    //println!("file\n{}", String::from_utf8_lossy(&file[..1000]));
-    
-    let probcodes = generate_probcodes(&file[..100000], 200);
-    //println!("probcode: {:?}", probcodes);
-    std::fs::write("probcodes.u8", probcodes).unwrap();
+    for (narg, arg) in env::args().enumerate() {
+        if narg==0 { continue }
+        match arg.as_str() {
+            "slice<-enwik" => {
+                let maxlen = 200000;
+                let file = read("../enwik9").unwrap();
+                std::fs::write("enwik.slice", &file[..maxlen]).unwrap();
+            },
+            "probcodes<-slice" => {
+                let file = read("enwik.slice").unwrap();
+                
+                let probcodes = generate_probcodes(&file, 100);
+                std::fs::write("probcodes.u8", probcodes).unwrap();
+            },
+            "huffman<-probcodes" => {
+                let probcodes = std::fs::read("probcodes.u8").unwrap();
+
+                let tree = huffman_coding::HuffmanTree::from_data(&probcodes);
+                let tree_table = tree.to_table();
+                std::fs::write("huffcodes.tree", tree_table).unwrap();
+
+                let mut huffcodes = std::fs::File::create("huffcodes.bin").unwrap(); //Vec::new();
+                let mut writer = huffman_coding::HuffmanWriter::new(&mut huffcodes, &tree);
+                writer.write(&probcodes).unwrap();
+            },
+            x => println!("undefined mode: {}", x)
+        }
+    }
+
+
+
 }
