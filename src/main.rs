@@ -5,7 +5,7 @@ use std::fs::read;
 use std::cmp::Reverse;
 use huffman_coding;
 use std::io::Write;
-use simple_bar::ProgressBar;
+use tqdm::tqdm;
 use std::env;
 
 // fn make_classicrotund(content: &[u8], markov_order: usize) -> Vec<u8> {
@@ -102,12 +102,9 @@ fn make_weightedrotund(content: &[u8], markov_order: usize) -> Vec<u8> {
 }
 
 fn generate_probcodes(file: &[u8], markov_order: usize) -> Vec<u8> {
-    let mut bar = ProgressBar::default(file.len() as u32, 50, true);
-
     let mut probcodes: Vec<u8> = Vec::new();
 
-    bar.update();
-    for n in 1..file.len() {
+    for n in tqdm(1..file.len()) {
         //print!("n{} ", n);
         //let rotund = make_classicrotund(&file[..n], markov_order);
         let rotund = make_weightedrotund(&file[..n], markov_order);
@@ -116,7 +113,6 @@ fn generate_probcodes(file: &[u8], markov_order: usize) -> Vec<u8> {
 
         let target_u8 = file[n]; 
         probcodes.push( rotund.iter().position(|&x| x == target_u8).unwrap() as u8 );
-        bar.update();
     }
     probcodes
 }
