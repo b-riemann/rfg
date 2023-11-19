@@ -58,7 +58,7 @@ use std::env;
 //     rotund
 // }
 
-pub fn argsort256(slice: &[u16]) -> Vec<u8> {
+pub fn argsort256(slice: &[u32]) -> Vec<u8> {
     let mut keys : Vec<u8> = (0..=255u8).collect();
     keys.sort_by_key(|x| Reverse(&slice[*x as usize]));
     keys
@@ -70,7 +70,7 @@ fn make_weightedrotund(content: &[u8], markov_order: usize) -> Vec<u8> {
     //then check char before occurance_idx if it fits with the pattern.
     //if so increase the count by 1 
     //if not exit for this occurence_idx and go to next one until markov_order is reached
-    let mut rotund_probs = [0u16; 256];
+    let mut rotund_probs = [0u32; 256];
 
     let n = content.len();
     if n < markov_order {
@@ -78,12 +78,16 @@ fn make_weightedrotund(content: &[u8], markov_order: usize) -> Vec<u8> {
     }
 
     let needle = &content[n-markov_order..n];
-    // -> means: each next_u8 probability (one for each occurance_idx) is weighted by the number of matching characters before
-    for window in content.windows(markov_order+1) {
-        //let (target, hay) = window.split_last().unwrap();
+    let needle_last = *needle.last().unwrap();
+    let markov_minus = markov_order-1;
 
-        let mut overlap: u16 = 0;
-        for i in (0..markov_order).rev() {
+    for window in content.windows(markov_order+1) {
+        if needle_last != window[markov_minus] {
+            continue;
+        } 
+
+        let mut overlap = 1;
+        for i in (0..markov_minus).rev() {
             if needle[i] != window[i] {
                 break;
             }
@@ -91,7 +95,7 @@ fn make_weightedrotund(content: &[u8], markov_order: usize) -> Vec<u8> {
         }
         
         let target = *window.last().unwrap() as usize;
-        rotund_probs[target] += overlap;
+        rotund_probs[target] += overlap*overlap*overlap; //cubic
     }
     argsort256(&rotund_probs)
     
