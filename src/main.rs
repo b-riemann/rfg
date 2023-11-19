@@ -123,15 +123,31 @@ fn main() {
         if narg==0 { continue }
         match arg.as_str() {
             "slice<-enwik" => {
-                let maxlen = 200000;
+                let maxlen = 400_000;
                 let file = read("../enwik9").unwrap();
                 std::fs::write("enwik.slice", &file[..maxlen]).unwrap();
             },
             "probcodes<-slice" => {
                 let file = read("enwik.slice").unwrap();
                 
-                let probcodes = generate_probcodes(&file, 200);
+                let probcodes = generate_probcodes(&file, 1000);
                 std::fs::write("probcodes.u8", probcodes).unwrap();
+            },
+            "entropy<-probcodes" => {
+                let probcodes = std::fs::read("probcodes.u8").unwrap();
+                let mut slots = [0u32; 256];
+                for n in probcodes {
+                    slots[n as usize] += 1;
+                }
+                println!("{:?}", slots);
+                let mut entropy = 0.0;
+                let su: u32 = slots.iter().sum();
+                let sm = su as f64;
+                for s in slots.iter().filter(|&x| *x!=0) {
+                    let p = (*s as f64) / sm;
+                    entropy -= p * p.log2();
+                }
+                println!("{}", entropy);
             },
             "huffman<-probcodes" => {
                 let probcodes = std::fs::read("probcodes.u8").unwrap();
@@ -147,7 +163,4 @@ fn main() {
             x => println!("undefined mode: {}", x)
         }
     }
-
-
-
 }
