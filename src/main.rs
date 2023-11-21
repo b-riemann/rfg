@@ -58,7 +58,7 @@ use std::env;
 //     rotund
 // }
 
-pub fn argsort256(slice: &[u32]) -> Vec<u8> {
+pub fn argsort256(slice: &[usize]) -> Vec<u8> {
     let mut keys : Vec<u8> = (0..=255u8).collect();
     keys.sort_by_key(|x| Reverse(&slice[*x as usize]));
     keys
@@ -70,48 +70,47 @@ fn make_weightedrotund(content: &[u8], markov_order: usize) -> Vec<u8> {
     //then check char before occurance_idx if it fits with the pattern.
     //if so increase the count by 1 
     //if not exit for this occurence_idx and go to next one until markov_order is reached
-    let mut rotund_probs = [0u32; 256];
+    let mut rotund_probs = [0; 256];
 
     let n = content.len();
     if n < markov_order {
         return (0..=255u8).collect()
     }
 
-    let needle = &content[n-markov_order..n];
-    let needle_last = *needle.last().unwrap();
-    let markov_minus = markov_order-1;
+    let needle = &content[..markov_order];
+    let needle_first = *needle.first().unwrap();
 
     for window in content.windows(markov_order+1) {
-        if needle_last != window[markov_minus] {
+        if needle_first != window[1] {
             continue;
         } 
 
         let mut overlap = 1;
-        for i in (0..markov_minus).rev() {
-            if needle[i] != window[i] {
-                break;
-            }
-            overlap += 1;
+        loop {
+            let b = overlap+1;
+            if needle[overlap] != window[b] { break; }
+            overlap = b;
+            if overlap == markov_order { break; }
         }
-        
-        let target = *window.last().unwrap() as usize;
+
+        let target = window[0] as usize;
         rotund_probs[target] += overlap*overlap*overlap; //cubic
     }
     argsort256(&rotund_probs)
     
 }
 
-fn generate_probcodes(file: &[u8], markov_order: usize) -> Vec<u8> {
+fn generate_probcodes(rfile: &[u8], markov_order: usize) -> Vec<u8> {
     let mut probcodes: Vec<u8> = Vec::new();
-
-    for n in tqdm(1..file.len()) {
+    
+    for n in tqdm( (1..rfile.len()-1).rev() ) {
         //print!("n{} ", n);
         //let rotund = make_classicrotund(&file[..n], markov_order);
-        let rotund = make_weightedrotund(&file[..n], markov_order);
+        let rotund = make_weightedrotund(&rfile[n..], markov_order);
         
         //println!("rotund{} {}", rotund.len(), String::from_utf8_lossy(&rotund[..16]));
 
-        let target_u8 = file[n]; 
+        let target_u8 = rfile[n-1]; 
         probcodes.push( rotund.iter().position(|&x| x == target_u8).unwrap() as u8 );
     }
     probcodes
@@ -128,8 +127,8 @@ fn main() {
                 std::fs::write("enwik.slice", &file[..maxlen]).unwrap();
             },
             "probcodes<-slice" => {
-                let file = read("enwik.slice").unwrap();
-                
+                let mut file = read("enwik.slice").unwrap();
+                file.reverse();
                 let probcodes = generate_probcodes(&file, 1000);
                 std::fs::write("probcodes.u8", probcodes).unwrap();
             },
