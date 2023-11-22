@@ -80,20 +80,20 @@ fn make_weightedrotund(content: &[u8], markov_order: usize) -> Vec<u8> {
     let needle = &content[..markov_order];
     let needle_first = *needle.first().unwrap();
 
-    for window in content.windows(markov_order+1) {
-        if needle_first != window[1] {
+    for a in 0..content.len()-markov_order {
+        if needle_first != content[a+1] {
             continue;
         } 
 
         let mut overlap = 1;
         loop {
             let b = overlap+1;
-            if needle[overlap] != window[b] { break; }
+            if needle[overlap] != content[a+b] { break; }
             overlap = b;
             if overlap == markov_order { break; }
         }
 
-        let target = window[0] as usize;
+        let target = content[a] as usize;
         rotund_probs[target] += overlap*overlap*overlap; //cubic
     }
     argsort256(&rotund_probs)
@@ -149,7 +149,7 @@ fn main() {
                 let p = (*s as f64) / sm;
                 entropy -= p * p.log2();
             }
-            println!("entropy = {:.3} bits/byte", entropy);
+            println!("entropy = {:.4} bits/byte", entropy);
         },
         "huffman<-" => {
             let filename = args.next().unwrap();
