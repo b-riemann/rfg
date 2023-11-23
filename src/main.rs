@@ -8,69 +8,10 @@ use std::io::Write;
 use tqdm::tqdm;
 use std::env;
 
-// fn make_classicrotund(content: &[u8], markov_order: usize) -> Vec<u8> {
-//     //rotund is a permutation of the range 0..256. It is ordered so that bytes with highest probability occur first
-//     // content: data from which the probabilities are computed
-//     // markov_order: largest substring length to be checked
-
-//     let mut rotund : Vec<u8> = Vec::new();
-//     let n = content.len();
-//     let lemax = min(n, markov_order);
-//     for le in (1..lemax).rev() {
-//         let pat = &content[n-le..n];
-
-//         let mut counter: HashMap<u8, usize> = HashMap::new();
-
-//         for itra in memmem::find_iter(&content[..n-1], &pat) {
-//             let next_u8 = content[itra+le];
-//             //println!("{:?} {:?} -> {}", itra, String::from_utf8_lossy(&content[itra..itra+le+1]), next_u8 as char);
-
-//             if rotund.contains(&next_u8) {
-//                 continue
-//             }
-//             let val = counter.entry(next_u8).or_insert(0);
-//             *val += 1;
-//         }
-//         let mut r: Vec<(&u8, &usize)> = counter.iter().collect();
-//         r.sort_by(|a, b| b.1.cmp(a.1));
-//         if r.is_empty() {
-//             continue
-//         }
-//         //print!("\nle{} pat:{:?}", le, String::from_utf8_lossy(pat));
-//         //for etr in &r {
-//             //print!(" {}: {}, ", *etr.0 as char, etr.1);
-//         //}
-
-//         for ri in r {
-//             rotund.push(*ri.0);
-//         }
-
-//         if rotund.len() > 256 {
-//             println!("early stopping!");
-//             break;
-//         }
-//     }
-//     for xi in 0..=255u8 {
-//         if !rotund.contains(&xi) {
-//             rotund.push(xi);
-//         }
-//     }
-//     rotund
-// }
-
-pub fn argsort256(slice: &[usize]) -> Vec<u8> {
-    let mut keys : Vec<u8> = (0..=255u8).collect();
-    keys.sort_by_key(|x| Reverse(&slice[*x as usize]));
-    keys
-}
-
-
-fn make_weightedrotund(content: &[u8], markov_order: usize) -> Vec<u8> {
-    //for each occurence, add the next_u8 as a counter
-    //then check char before occurance_idx if it fits with the pattern.
-    //if so increase the count by 1 
-    //if not exit for this occurence_idx and go to next one until markov_order is reached
-    let mut rotund_probs = [0; 256];
+fn make_rotund(content: &[u8], markov_order: usize) -> Vec<u8> {
+    //let mut rotund_probs = [0; 256];
+    let mut rotund_overlap = [0; 256];
+    let mut rotund_freq = [0u32; 256];
 
     let n = content.len();
     if n < markov_order {
@@ -94,9 +35,23 @@ fn make_weightedrotund(content: &[u8], markov_order: usize) -> Vec<u8> {
         }
 
         let target = content[a] as usize;
-        rotund_probs[target] += overlap*overlap*overlap; //cubic
+
+        if rotund_overlap[target] > overlap {
+            continue
+        }
+        if rotund_overlap[target] == overlap {
+            rotund_freq[target] += 1;
+        } else {
+            rotund_overlap[target] = overlap;
+            rotund_freq[target] = 1;
+        }
+        //rotund_probs[target] += overlap*overlap*overlap; //cubic
     }
-    argsort256(&rotund_probs)
+
+    let mut keys : Vec<u8> = (0..=255u8).collect();
+    //keys.sort_by_key(|x| Reverse(&rotund_probs[*x as usize]));
+    keys.sort_by_key(|&x| { let xi=x as usize; Reverse((rotund_overlap[xi] << 32) +(rotund_freq[xi] as usize)) });
+    keys
     
 }
 
@@ -106,7 +61,7 @@ fn generate_probcodes(rfile: &[u8], markov_order: usize) -> Vec<u8> {
     for n in tqdm( (1..rfile.len()-1).rev() ) {
         //print!("n{} ", n);
         //let rotund = make_classicrotund(&file[..n], markov_order);
-        let rotund = make_weightedrotund(&rfile[n..], markov_order);
+        let rotund = make_rotund(&rfile[n..], markov_order);
         
         //println!("rotund{} {}", rotund.len(), String::from_utf8_lossy(&rotund[..16]));
 
