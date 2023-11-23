@@ -1,7 +1,5 @@
-use std::fs::read;
-//use std::collections::HashMap;
-//use memchr::memmem;
-//use std::cmp::min;
+use std::fs::{read,write};
+use std::collections::HashSet;
 use std::cmp::Reverse;
 use huffman_coding;
 use std::io::Write;
@@ -20,8 +18,9 @@ fn make_rotund(content: &[u8], markov_order: usize) -> Vec<u8> {
 
     let needle = &content[..markov_order];
     let needle_first = *needle.first().unwrap();
+    let clen = content.len();
 
-    for a in 0..content.len()-markov_order {
+    for a in 0..clen-1 {
         if needle_first != content[a+1] {
             continue;
         } 
@@ -29,9 +28,9 @@ fn make_rotund(content: &[u8], markov_order: usize) -> Vec<u8> {
         let mut overlap = 1;
         loop {
             let b = overlap+1;
-            if needle[overlap] != content[a+b] { break; }
+            let c = a+b;
+            if (c >= clen) || (needle[overlap] != content[c]) { break; }
             overlap = b;
-            if overlap == markov_order { break; }
         }
 
         let target = content[a] as usize;
@@ -72,6 +71,8 @@ fn generate_probcodes(rfile: &[u8], markov_order: usize) -> Vec<u8> {
 }
 
 fn main() {
+    const ENWIK9: &str = "../enwik9";
+    const UNUSED: &str = "unused.u8";
     let mut args = env::args();
     args.next();
 
@@ -79,24 +80,34 @@ fn main() {
     match args.next().unwrap().as_str() {
         "slice<-enwik" => {
             let maxlen = 400_000;
-            let file = read("../enwik9").unwrap();
-            std::fs::write("enwik.slice", &file[..maxlen]).unwrap();
+            let file = read(ENWIK9).unwrap();
+            write("enwik.slice", &file[..maxlen]).unwrap();
         },
+        "unused<-enwik"=> {
+            let file = read(ENWIK9).unwrap();
+            let mut symbols: HashSet<u8> = HashSet::from_iter(0..=255u8);
+            for ch in tqdm(file.into_iter()) {
+                symbols.remove(&ch);
+            }
+            let contents: Vec<u8> = symbols.into_iter().collect();
+            write(UNUSED, contents).unwrap();
+        }
         "probcodes<-" => {
             let filename = args.next().unwrap();
             let mut file = read(filename).unwrap();
             file.reverse();
             let probcodes = generate_probcodes(&file, 1000);
-            std::fs::write("probcodes.u8", probcodes).unwrap();
+            write("probcodes.u8", probcodes).unwrap();
         },
         "entropy<-" => {
             let filename = args.next().unwrap();
-            let probcodes = read(filename).unwrap();
+            let content = read(filename).unwrap();
+            let clen = content.len();
             let mut slots = [0u32; 256];
-            for n in probcodes {
+            for n in content {
                 slots[n as usize] += 1;
             }
-            //println!("{:?}", slots);
+            println!("slots: {:?} {:?} {:?} {:?} ...", slots[0], slots[1], slots[2], slots[3]);
             let mut entropy = 0.0;
             let su: u32 = slots.iter().sum();
             let sm = su as f64;
@@ -104,20 +115,50 @@ fn main() {
                 let p = (*s as f64) / sm;
                 entropy -= p * p.log2();
             }
+
             println!("entropy = {:.4} bits/byte", entropy);
+            println!("orig_len = {} bytes", clen);
+            println!("entropy*orig_len = {:.1} bytes", (entropy*clen as f64/8.0));
         },
         "huffman<-" => {
             let filename = args.next().unwrap();
-            let probcodes = std::fs::read(filename).unwrap();
+            let content = std::fs::read(filename).unwrap();
 
-            let tree = huffman_coding::HuffmanTree::from_data(&probcodes);
+            let tree = huffman_coding::HuffmanTree::from_data(&content);
             let tree_table = tree.to_table();
             std::fs::write("huffcodes.tree", tree_table).unwrap();
 
             let mut huffcodes = std::fs::File::create("huffcodes.bin").unwrap(); //Vec::new();
             let mut writer = huffman_coding::HuffmanWriter::new(&mut huffcodes, &tree);
-            writer.write(&probcodes).unwrap();
+            writer.write(&content).unwrap();
         },
+        "rle<-" => {
+            let unused_bytes = std::fs::read(UNUSED).unwrap();  
+            let filename = args.next().unwrap();  
+            let content = std::fs::read(filename).unwrap();
+            let mut rle_encoded = Vec::new();
+
+            let mut nulcounter = 0;
+            for ch in tqdm(content.into_iter()) {
+                if ch==0 {
+                    if nulcounter >= unused_bytes.len() {
+                        rle_encoded.push(*unused_bytes.last().unwrap());
+                        nulcounter = 1;
+                    } else if nulcounter != 0 {
+                        nulcounter += 1;
+                    } else {
+                        nulcounter = 1;
+                    }
+                } else if nulcounter != 0 {
+                    nulcounter -= 1;
+                    rle_encoded.push(unused_bytes[nulcounter]);
+                    nulcounter = 0;
+                } else {
+                    rle_encoded.push(ch);
+                }
+            }
+            write("rle.u8", rle_encoded).unwrap();
+        }
         x => println!("undefined mode: {}", x)
     }
 }
