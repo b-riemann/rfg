@@ -6,22 +6,16 @@ use std::io::Write;
 use tqdm::tqdm;
 use std::env;
 
-fn make_rotund(content: &[u8], markov_order: usize) -> Vec<u8> {
+fn make_rotund(content: &[u8]) -> Vec<u8> {
     //let mut rotund_probs = [0; 256];
     let mut rotund_overlap = [0; 256];
     let mut rotund_freq = [0u32; 256];
 
-    let n = content.len();
-    if n < markov_order {
-        return (0..=255u8).collect()
-    }
-
-    let needle = &content[..markov_order];
-    let needle_first = *needle.first().unwrap();
+    let first = content[0];
     let clen = content.len();
 
     for a in 0..clen-1 {
-        if needle_first != content[a+1] {
+        if first != content[a+1] {
             continue;
         } 
 
@@ -29,7 +23,7 @@ fn make_rotund(content: &[u8], markov_order: usize) -> Vec<u8> {
         loop {
             let b = overlap+1;
             let c = a+b;
-            if (c >= clen) || (needle[overlap] != content[c]) { break; }
+            if (c >= clen) || (content[overlap] != content[c]) { break; }
             overlap = b;
         }
 
@@ -54,13 +48,15 @@ fn make_rotund(content: &[u8], markov_order: usize) -> Vec<u8> {
     
 }
 
-fn generate_probcodes(rfile: &[u8], markov_order: usize) -> Vec<u8> {
+fn generate_probcodes(rfile: &[u8]) -> Vec<u8> {
     let mut probcodes: Vec<u8> = Vec::new();
     
+    probcodes.push( *rfile.last().unwrap() );
+
     for n in tqdm( (1..rfile.len()-1).rev() ) {
         //print!("n{} ", n);
         //let rotund = make_classicrotund(&file[..n], markov_order);
-        let rotund = make_rotund(&rfile[n..], markov_order);
+        let rotund = make_rotund(&rfile[n..]);
         
         //println!("rotund{} {}", rotund.len(), String::from_utf8_lossy(&rotund[..16]));
 
@@ -79,7 +75,7 @@ fn main() {
     // next step: make weighted_rotund, which is now linear in length-to-proability, maybe quadratic in len and see what happens
     match args.next().unwrap().as_str() {
         "slice<-enwik" => {
-            let maxlen = 400_000;
+            let maxlen = 100_000;
             let file = read(ENWIK9).unwrap();
             write("enwik.slice", &file[..maxlen]).unwrap();
         },
@@ -96,7 +92,7 @@ fn main() {
             let filename = args.next().unwrap();
             let mut file = read(filename).unwrap();
             file.reverse();
-            let probcodes = generate_probcodes(&file, 1000);
+            let probcodes = generate_probcodes(&file);
             write("probcodes.u8", probcodes).unwrap();
         },
         "entropy<-" => {
