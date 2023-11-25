@@ -2,7 +2,7 @@ use std::fs::{read,write};
 use std::collections::HashSet;
 use std::cmp::Reverse;
 use huffman_coding;
-use std::io::Write;
+use std::io::{Write, Result, ErrorKind, Error};
 use tqdm::tqdm;
 use std::env;
 
@@ -48,53 +48,119 @@ fn make_rotund(content: &[u8]) -> Vec<u8> {
     
 }
 
-fn generate_probcodes(rfile: &[u8]) -> Vec<u8> {
+fn generate_probcodes(reversed: &[u8]) -> Vec<u8> {
     let mut probcodes: Vec<u8> = Vec::new();
     
-    probcodes.push( *rfile.last().unwrap() );
+    let first_byte = *reversed.last().unwrap();
+    probcodes.push( first_byte );
 
-    for n in tqdm( (1..rfile.len()-1).rev() ) {
-        //print!("n{} ", n);
-        //let rotund = make_classicrotund(&file[..n], markov_order);
-        let rotund = make_rotund(&rfile[n..]);
-        
+    for n in tqdm( (0..reversed.len()-2).rev() ) {
+        let rotund = make_rotund(&reversed[n+1..]);
         //println!("rotund{} {}", rotund.len(), String::from_utf8_lossy(&rotund[..16]));
 
-        let target_u8 = rfile[n-1]; 
+        let target_u8 = reversed[n]; 
         probcodes.push( rotund.iter().position(|&x| x == target_u8).unwrap() as u8 );
     }
     probcodes
 }
 
-fn main() {
+fn order_symbols(symbols: HashSet<u8>) -> Vec<u8> {
+    let mut s : Vec<u8> = symbols.into_iter().collect();
+    s.sort_by(|a,b| a.cmp(b));
+    s
+}
+
+fn unused_symbols(content: &[u8]) -> Vec<u8> {
+    let mut symbols: HashSet<u8> = HashSet::from_iter(0..=255u8);
+    for ch in tqdm(content.into_iter()) {
+        symbols.remove(&ch);
+    }
+    order_symbols(symbols)
+}
+
+fn used_from(unused_symbols: &[u8]) -> Vec<u8> {
+    let mut used: HashSet<u8> = HashSet::from_iter(0..=255u8);
+    for ch in unused_symbols {
+        used.remove(&ch);
+    }
+    order_symbols(used)
+}
+
+fn main() -> Result<()> {
     const ENWIK9: &str = "../enwik9";
-    const UNUSED: &str = "unused.u8";
+    const UNUSED_FILE: &str = "unused.u8";
+    const USED_FILE: &str = "used.u8";
+    let prepd_file = "out/enwik.prepd";
+    let probcodes_file = "out/probcodes.u8";
+    let rle_file = "out/rle.u8";
+    let hufftree_file = "out/huffcodes.tree";
+    let huffbin_file = "out/huffcodes.bin";
+
     let mut args = env::args();
     args.next();
 
     // next step: make weighted_rotund, which is now linear in length-to-proability, maybe quadratic in len and see what happens
     match args.next().unwrap().as_str() {
-        "slice<-enwik" => {
-            let maxlen = 100_000;
-            let file = read(ENWIK9).unwrap();
-            write("enwik.slice", &file[..maxlen]).unwrap();
-        },
         "unused<-enwik"=> {
-            let file = read(ENWIK9).unwrap();
-            let mut symbols: HashSet<u8> = HashSet::from_iter(0..=255u8);
-            for ch in tqdm(file.into_iter()) {
-                symbols.remove(&ch);
-            }
-            let contents: Vec<u8> = symbols.into_iter().collect();
-            write(UNUSED, contents).unwrap();
+            let file = read(ENWIK9)?;
+            let unused = unused_symbols(&file);
+            let used = used_from(&unused);
+            write(UNUSED_FILE, unused)?;
+            write(USED_FILE, used)
         }
-        "probcodes<-" => {
-            let filename = args.next().unwrap();
-            let mut file = read(filename).unwrap();
+        "prepd<-enwik" => {
+            let max_len = usize::from_str_radix(&args.next().unwrap(), 10).unwrap();
+
+            let used = read(USED_FILE)?;
+            let mut usedix = [0u8; 256];
+            for (n, ch) in used.into_iter().enumerate() {
+                usedix[ch as usize] = n as u8;
+            }
+
+            let mut file = read(ENWIK9)?;
+            file.truncate(max_len);
             file.reverse();
-            let probcodes = generate_probcodes(&file);
-            write("probcodes.u8", probcodes).unwrap();
+            let prepd : Vec<u8> = file.into_iter().map(|x| usedix[x as usize]).collect();
+            write(prepd_file, &prepd)
         },
+        "probcodes<-" => {
+            let prepd_filename = args.next().unwrap();
+
+            let prepd = read(prepd_filename).unwrap();
+            let probcodes = generate_probcodes(&prepd);
+            write(probcodes_file, probcodes)
+        },
+        "rle<-" => {
+            let filename = args.next().unwrap();
+
+            //available unused bytecode range for RLE encosing is offset..=255u8
+            //the null values to run-length encode range from 1..maxcount
+            let offset = read(USED_FILE)?.len() as u8 - 1;
+            let maxcount = 255u8-offset-1; 
+  
+            let content = read(filename)?;
+            let mut rle_encoded = Vec::new();
+
+            let mut nullcounter = 0u8;
+            for ch in tqdm(content.into_iter()) {
+                if ch==0 {
+                    if nullcounter > maxcount {
+                        rle_encoded.push(offset+nullcounter);
+                        nullcounter = 1;
+                    } else {
+                        nullcounter += 1;
+                    }
+                } else if nullcounter != 0 {
+                    nullcounter -= 1;
+                    rle_encoded.push(offset+nullcounter);
+                    nullcounter = 0;
+                    rle_encoded.push(ch)
+                } else {
+                    rle_encoded.push(ch);
+                }
+            }
+            write(rle_file, rle_encoded)
+        }
         "entropy<-" => {
             let filename = args.next().unwrap();
             let content = read(filename).unwrap();
@@ -115,46 +181,21 @@ fn main() {
             println!("entropy = {:.4} bits/byte", entropy);
             println!("orig_len = {} bytes", clen);
             println!("entropy*orig_len = {:.1} bytes", (entropy*clen as f64/8.0));
+            Ok(())
         },
-        "huffman<-" => {
+        "huffencode<-" => {
             let filename = args.next().unwrap();
             let content = std::fs::read(filename).unwrap();
 
             let tree = huffman_coding::HuffmanTree::from_data(&content);
             let tree_table = tree.to_table();
-            std::fs::write("huffcodes.tree", tree_table).unwrap();
+            std::fs::write(hufftree_file, tree_table).unwrap();
 
-            let mut huffcodes = std::fs::File::create("huffcodes.bin").unwrap(); //Vec::new();
+            let mut huffcodes = std::fs::File::create(huffbin_file).unwrap();
             let mut writer = huffman_coding::HuffmanWriter::new(&mut huffcodes, &tree);
-            writer.write(&content).unwrap();
+            writer.write(&content)?;
+            Ok(())
         },
-        "rle<-" => {
-            let unused_bytes = std::fs::read(UNUSED).unwrap();  
-            let filename = args.next().unwrap();  
-            let content = std::fs::read(filename).unwrap();
-            let mut rle_encoded = Vec::new();
-
-            let mut nulcounter = 0;
-            for ch in tqdm(content.into_iter()) {
-                if ch==0 {
-                    if nulcounter >= unused_bytes.len() {
-                        rle_encoded.push(*unused_bytes.last().unwrap());
-                        nulcounter = 1;
-                    } else if nulcounter != 0 {
-                        nulcounter += 1;
-                    } else {
-                        nulcounter = 1;
-                    }
-                } else if nulcounter != 0 {
-                    nulcounter -= 1;
-                    rle_encoded.push(unused_bytes[nulcounter]);
-                    nulcounter = 0;
-                } else {
-                    rle_encoded.push(ch);
-                }
-            }
-            write("rle.u8", rle_encoded).unwrap();
-        }
-        x => println!("undefined mode: {}", x)
+        x => Err( Error::new(ErrorKind::NotFound, format!("unknown mode {x}")) )
     }
 }
