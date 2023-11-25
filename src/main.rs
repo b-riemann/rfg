@@ -1,8 +1,8 @@
 use std::fs::{read,write};
 use std::collections::HashSet;
 use std::cmp::Reverse;
-use huffman_coding;
-use std::io::{Write, Result, ErrorKind, Error};
+use huffman_coding::{self, HuffmanReader, HuffmanWriter};
+use std::io::{Write, Result, ErrorKind, Error, Read};
 use tqdm::tqdm;
 use std::env;
 
@@ -99,7 +99,7 @@ fn main() -> Result<()> {
     let mut args = env::args();
     args.next();
 
-    // next step: make weighted_rotund, which is now linear in length-to-proability, maybe quadratic in len and see what happens
+    // the order of possible modes corresponds to one compression->decompression cycle (with entropy diagnosis in between)
     match args.next().unwrap().as_str() {
         "unused<-enwik"=> {
             let file = read(ENWIK9)?;
@@ -185,17 +185,31 @@ fn main() -> Result<()> {
         },
         "huffencode<-" => {
             let filename = args.next().unwrap();
-            let content = std::fs::read(filename).unwrap();
+            let contents = read(filename)?;
 
-            let tree = huffman_coding::HuffmanTree::from_data(&content);
+            let tree = huffman_coding::HuffmanTree::from_data(&contents);
             let tree_table = tree.to_table();
-            std::fs::write(hufftree_file, tree_table).unwrap();
+            write(hufftree_file, tree_table)?;
 
-            let mut huffcodes = std::fs::File::create(huffbin_file).unwrap();
-            let mut writer = huffman_coding::HuffmanWriter::new(&mut huffcodes, &tree);
-            writer.write(&content)?;
+            let mut huffcodes = std::fs::File::create(huffbin_file)?;
+            let mut writer = HuffmanWriter::new(&mut huffcodes, &tree);
+            writer.write(&contents)?;
             Ok(())
         },
+        "huffdecode->" => {
+            let filename = args.next().unwrap();
+
+            let tree_table = read(hufftree_file)?;
+            let tree = huffman_coding::HuffmanTree::from_table(&tree_table);
+
+            let huffbin = std::fs::File::open(huffbin_file)?;
+            let mut reader = HuffmanReader::new(&huffbin, tree);
+            let mut contents: Vec<u8> = Vec::new();
+            reader.read_to_end(&mut contents)?;
+            write(filename, contents)
+        }  
+
+
         x => Err( Error::new(ErrorKind::NotFound, format!("unknown mode {x}")) )
     }
 }
