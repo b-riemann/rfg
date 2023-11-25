@@ -3,8 +3,18 @@ use std::collections::HashSet;
 use std::cmp::Reverse;
 use huffman_coding::{self, HuffmanReader, HuffmanWriter};
 use std::io::{Write, Result, ErrorKind, Error, Read};
-use tqdm::tqdm;
 use std::env;
+
+use indicatif::{ProgressBar, ProgressStyle};
+
+fn bar(total_size: u64) -> ProgressBar { //from indicatif example "download.rs"
+    let pb = ProgressBar::new(total_size);
+    pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+        .unwrap()
+        //.with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
+        .progress_chars("#>-"));
+    pb
+}
 
 fn make_rotund(content: &[u8]) -> Vec<u8> {
     //let mut rotund_probs = [0; 256];
@@ -48,20 +58,46 @@ fn make_rotund(content: &[u8]) -> Vec<u8> {
     
 }
 
-fn generate_probcodes(reversed: &[u8]) -> Vec<u8> {
-    let mut probcodes: Vec<u8> = Vec::new();
+fn prob_encode(reversed: &[u8]) -> Vec<u8> {
+    let nm_end = reversed.len();
+    let mut probcodes = vec![0u8; nm_end];
     
-    let first_byte = *reversed.last().unwrap();
-    probcodes.push( first_byte );
+    let mut m = 0;
+    let mut n = nm_end - 1;
+    probcodes[m] = reversed[n];
 
-    for n in tqdm( (0..reversed.len()-2).rev() ) {
-        let rotund = make_rotund(&reversed[n+1..]);
-        //println!("rotund{} {}", rotund.len(), String::from_utf8_lossy(&rotund[..16]));
-
-        let target_u8 = reversed[n]; 
-        probcodes.push( rotund.iter().position(|&x| x == target_u8).unwrap() as u8 );
+    let pb = bar(nm_end as u64);
+    loop {
+        let rotund = make_rotund(&reversed[n..]);
+        n -= 1;
+        let target_u8 = reversed[n];
+        m += 1;
+        probcodes[m] = rotund.iter().position(|&x| x == target_u8).unwrap() as u8;
+        if m % 32 == 0 { pb.set_position(m as u64); }
+        if n == 0 { pb.set_position(nm_end as u64); break }
     }
     probcodes
+}
+
+fn prob_decode(probcodes: &[u8]) -> Vec<u8> {
+    let nm_end = probcodes.len();
+    let mut reversed = vec![0u8; nm_end];
+
+    let mut m = 0;
+    let mut n = nm_end - 1;
+    reversed[n] = probcodes[m];
+
+    let pb = bar(nm_end as u64);
+    loop {
+        let rotund = make_rotund(&reversed[n..]);
+        m += 1;
+        let ch = rotund[probcodes[m] as usize];
+        n -= 1;
+        reversed[n] = ch;
+        if m % 32 == 0 { pb.set_position(m as u64); }
+        if n == 0 { pb.set_position(nm_end as u64); break }
+    }
+    reversed
 }
 
 fn order_symbols(symbols: HashSet<u8>) -> Vec<u8> {
@@ -72,7 +108,7 @@ fn order_symbols(symbols: HashSet<u8>) -> Vec<u8> {
 
 fn unused_symbols(content: &[u8]) -> Vec<u8> {
     let mut symbols: HashSet<u8> = HashSet::from_iter(0..=255u8);
-    for ch in tqdm(content.into_iter()) {
+    for ch in content {
         symbols.remove(&ch);
     }
     order_symbols(symbols)
@@ -92,6 +128,7 @@ fn main() -> Result<()> {
     const USED_FILE: &str = "used.u8";
     let prepd_file = "out/enwik.prepd";
     let probcodes_file = "out/probcodes.u8";
+    let probcodes_file_d = "out/probcodes.u8.decompressed";
     let rle_file = "out/rle.u8";
     let rle_file_d = "out/rle.u8.decompressed";
     let hufftree_file = "out/huffcodes.tree";
@@ -123,14 +160,14 @@ fn main() -> Result<()> {
             file.reverse();
             let prepd : Vec<u8> = file.into_iter().map(|x| usedix[x as usize]).collect();
             write(prepd_file, &prepd)
-        },
-        "probcodes<-" => {
+        }
+        "probencode<-" => {
             let prepd_filename = args.next().unwrap();
 
             let prepd = read(prepd_filename).unwrap();
-            let probcodes = generate_probcodes(&prepd);
+            let probcodes = prob_encode(&prepd);
             write(probcodes_file, probcodes)
-        },
+        }
         "rlencode<-" => {
             let filename = args.next().unwrap();
 
@@ -143,7 +180,7 @@ fn main() -> Result<()> {
             let mut rle_encoded = Vec::new();
 
             let mut nullcounter = 0u8;
-            for ch in tqdm(content.into_iter()) {
+            for ch in content {
                 if ch==0 {
                     if nullcounter > maxcount {
                         rle_encoded.push(offset+nullcounter);
@@ -182,7 +219,7 @@ fn main() -> Result<()> {
             println!("orig_len = {} bytes", clen);
             println!("entropy*orig_len = {:.1} bytes", (entropy*clen as f64/8.0));
             Ok(())
-        },
+        }
         "huffencode<-" => {
             let filename = args.next().unwrap();
             let contents = read(filename)?;
@@ -195,7 +232,7 @@ fn main() -> Result<()> {
             let mut writer = HuffmanWriter::new(&mut huffcodes, &tree);
             writer.write(&contents)?;
             Ok(())
-        },
+        }
         "huffdecode->" => {
             let filename = args.next().unwrap();
 
@@ -224,7 +261,13 @@ fn main() -> Result<()> {
             }
             write(filename, contents)
         }
+        "probdecode->" => {
+            let filename = args.next().unwrap();
 
+            let probcodes = read(probcodes_file_d)?;
+            let prepd = prob_decode(&probcodes);
+            write(filename, prepd)
+        }
         x => Err( Error::new(ErrorKind::NotFound, format!("unknown mode {x}")) )
     }
 }

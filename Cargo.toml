@@ -7,5 +7,4 @@ edition = "2021"
 
 [dependencies]
 huffman-coding = "0.1.2"
-memchr = "2.6.4"
-tqdm = "0.6.0"
+indicatif = "0.17.7"
