@@ -93,6 +93,7 @@ fn main() -> Result<()> {
     let prepd_file = "out/enwik.prepd";
     let probcodes_file = "out/probcodes.u8";
     let rle_file = "out/rle.u8";
+    let rle_file_d = "out/rle.u8.decompressed";
     let hufftree_file = "out/huffcodes.tree";
     let huffbin_file = "out/huffcodes.bin";
 
@@ -130,7 +131,7 @@ fn main() -> Result<()> {
             let probcodes = generate_probcodes(&prepd);
             write(probcodes_file, probcodes)
         },
-        "rle<-" => {
+        "rlencode<-" => {
             let filename = args.next().unwrap();
 
             //available unused bytecode range for RLE encosing is offset..=255u8
@@ -151,7 +152,6 @@ fn main() -> Result<()> {
                         nullcounter += 1;
                     }
                 } else if nullcounter != 0 {
-                    nullcounter -= 1;
                     rle_encoded.push(offset+nullcounter);
                     nullcounter = 0;
                     rle_encoded.push(ch)
@@ -208,7 +208,22 @@ fn main() -> Result<()> {
             reader.read_to_end(&mut contents)?;
             write(filename, contents)
         }  
+        "rldecode->" => {
+            let filename = args.next().unwrap();
 
+            let offset = read(USED_FILE)?.len() as u8 - 1;
+            let rle = read(rle_file_d)?;
+            let mut contents = Vec::new();
+            for ch in rle {
+                if ch > offset {
+                    let mut nulls = vec![0u8; (ch-offset) as usize];
+                    contents.append(&mut nulls);
+                } else {
+                    contents.push(ch);
+                }
+            }
+            write(filename, contents)
+        }
 
         x => Err( Error::new(ErrorKind::NotFound, format!("unknown mode {x}")) )
     }
