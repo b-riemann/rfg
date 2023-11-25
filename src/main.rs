@@ -196,6 +196,10 @@ fn main() -> Result<()> {
                     rle_encoded.push(ch);
                 }
             }
+
+            if nullcounter != 0 { // flush the nulls
+                rle_encoded.push(offset+nullcounter);
+            }
             write(rle_file, rle_encoded)
         }
         "entropy<-" => {
