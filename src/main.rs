@@ -7,6 +7,11 @@ use std::env;
 
 use indicatif::{ProgressBar, ProgressStyle};
 
+mod huffman;
+use huffman::{huffman_code, encode};
+
+use crate::huffman::gen_dictionary;
+
 fn bar(total_size: u64) -> ProgressBar { //from indicatif example "download.rs"
     let pb = ProgressBar::new(total_size);
     pb.set_style(ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({eta})")
@@ -235,6 +240,17 @@ fn main() -> Result<()> {
             let mut huffcodes = std::fs::File::create(huffbin_file)?;
             let mut writer = HuffmanWriter::new(&mut huffcodes, &tree);
             writer.write(&contents)?;
+            Ok(())
+        }
+        "test-huffencode16bit" => {
+            let freqs: Vec<usize> = (0..16).collect();
+            let hufftree = huffman_code(&freqs);
+            let mydict = gen_dictionary(hufftree);
+            println!("highest symbol number should have shortest code, and zero-freq symbols (0) should not occur:\n{:?}", mydict);
+            let message: Vec<usize> = (1..16).collect();
+            let encoded = encode(&message, mydict);
+            print!("encoded stream:"); // should be regrouped of 000000 000001 00001 11000 11001 .. 011 101 with possible zeros at end
+            let _: Vec<_> = encoded.into_iter().map(|num| print!(" {:08b}", num)).collect();
             Ok(())
         }
         "huffdecode->" => {
