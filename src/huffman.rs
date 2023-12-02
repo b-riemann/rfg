@@ -1,3 +1,4 @@
+use bitstream::BitReader;
 use std::collections::HashMap;
 use std::cmp::Reverse;
 use bit_vec::BitVec;
@@ -35,10 +36,10 @@ pub fn huffman_code(weights: &[usize]) -> HuffmanNode {
     }
 }
 
-type HuffDict = HashMap<usize, BitVec>;
+type EncodeDict = HashMap<usize, BitVec>;
 
-fn gen_entries(node: HuffmanNode, prefix: BitVec) -> HuffDict {
-    let mut dic: HuffDict = HashMap::new();
+fn gen_entries(node: HuffmanNode, prefix: BitVec) -> EncodeDict {
+    let mut dic: EncodeDict = HashMap::new();
     match node.node_type {
         NodeType::Leaf(sym) => { dic.insert(sym, prefix); dic }
         NodeType::Internal(node_a, node_b) => {
@@ -53,11 +54,11 @@ fn gen_entries(node: HuffmanNode, prefix: BitVec) -> HuffDict {
     }
 }
 
-pub fn gen_dictionary(root_node: HuffmanNode) -> HuffDict {
+pub fn gen_dictionary(root_node: HuffmanNode) -> EncodeDict {
     gen_entries(root_node, BitVec::new())
 }
 
-pub fn encode(input: &[usize], dic: HuffDict) -> Vec<u8> {
+pub fn encode(input: &[usize], dic: EncodeDict) -> Vec<u8> {
     let mut encoded: Vec<u8> = Vec::new();
     let mut bw = BitWriter::new(&mut encoded);
     for symbol in input {
@@ -68,4 +69,36 @@ pub fn encode(input: &[usize], dic: HuffDict) -> Vec<u8> {
     }
     drop(bw);
     encoded
+}
+
+fn get_internals(root_node: HuffmanNode) -> (HuffmanNode, HuffmanNode) {
+    match root_node.node_type {
+        NodeType::Internal(node_a, node_b) => (*node_a, *node_b),
+        _ => panic!("huffman root node should not be a leaf")
+    }
+}
+
+pub fn decode(input: &[u8], root_node: HuffmanNode) -> Vec<usize> {
+    let mut br = BitReader::new(input);
+    let (rootnode_a, rootnode_b) = get_internals(root_node);
+
+    let mut node = match br.next() {
+        Some(false) => &rootnode_a.node_type,
+        Some(true) => &rootnode_b.node_type,
+        None => panic!("bitreader should not have empty content at beginning")
+    };
+
+    let mut output = Vec::new();
+
+    while let Some(bit) = br.next() {
+        node = match node {
+            NodeType::Leaf(symbol) => {
+                output.push(*symbol);
+                if bit { &rootnode_b.node_type } else { &rootnode_a.node_type } 
+            }
+            NodeType::Internal(node_a, node_b) => if bit { &node_b.node_type } else { &node_a.node_type } 
+        };
+    }
+
+    output
 }

@@ -8,9 +8,7 @@ use std::env;
 use indicatif::{ProgressBar, ProgressStyle};
 
 mod huffman;
-use huffman::{huffman_code, encode};
-
-use crate::huffman::gen_dictionary;
+use huffman::{huffman_code, gen_dictionary, encode, decode as h16decode};
 
 fn bar(total_size: u64) -> ProgressBar { //from indicatif example "download.rs"
     let pb = ProgressBar::new(total_size);
@@ -244,13 +242,14 @@ fn main() -> Result<()> {
         }
         "test-huffencode16bit" => {
             let freqs: Vec<usize> = (0..16).collect();
-            let hufftree = huffman_code(&freqs);
-            let mydict = gen_dictionary(hufftree);
-            println!("highest symbol number should have shortest code, and zero-freq symbols (0) should not occur:\n{:?}", mydict);
-            let message: Vec<usize> = (1..16).collect();
-            let encoded = encode(&message, mydict);
-            print!("encoded stream:"); // should be regrouped of 000000 000001 00001 11000 11001 .. 011 101 with possible zeros at end
-            let _: Vec<_> = encoded.into_iter().map(|num| print!(" {:08b}", num)).collect();
+            let tree = huffman_code(&freqs);
+            
+            let edict = gen_dictionary(tree);
+            println!("highest symbol number should have shortest code, and zero-freq symbols (0) should not occur:\n{:?}", edict);
+            let message: Vec<usize> = vec![3,1,4,1,5,9];
+            let encoded = encode(&message, edict);
+            print!("encoded stream:");
+            let _: Vec<_> = encoded.into_iter().map(|num| print!(" {:08b}({})", num, num)).collect();
             Ok(())
         }
         "huffdecode->" => {
@@ -264,7 +263,16 @@ fn main() -> Result<()> {
             let mut contents: Vec<u8> = Vec::new();
             reader.read_to_end(&mut contents)?;
             write(filename, contents)
-        }  
+        }
+        "test-huffdecode16bit" => {
+            let freqs: Vec<usize> = (0..16).collect();
+            let tree = huffman_code(&freqs);
+
+            let encoded = vec![8,24,3,58];
+            let decoded = h16decode(&encoded, tree);
+            println!("decoded {:?}", decoded);
+            Ok(())
+        }
         "rldecode->" => {
             let filename = args.next().unwrap();
 
