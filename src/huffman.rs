@@ -20,9 +20,9 @@ impl HuffmanNode {
 }
 
 pub fn huffman_code(weights: &[usize]) -> HuffmanNode {
-    let symbols: Vec<usize> = (0..weights.len()).filter(|&w| w!=0).collect();
+    let occuring_symbols = (0..weights.len()).filter(|&w| w!=0);
 
-    let mut nodes: Vec<HuffmanNode> = symbols.into_iter().map(|sym| HuffmanNode { weight: weights[sym], node_type: NodeType::Leaf(sym) }).collect();
+    let mut nodes: Vec<HuffmanNode> = occuring_symbols.map(|sym| HuffmanNode { weight: weights[sym], node_type: NodeType::Leaf(sym) }).collect();
     loop {
         nodes.sort_by_key(|f| Reverse(f.weight));
         let a = nodes.pop().unwrap();
