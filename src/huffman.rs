@@ -35,39 +35,30 @@ fn gen_entries<X>(node: HuffmanNode<X>, prefix: BitVec) -> EncodeDict<X> where X
 }
 
 pub trait SerializeBytes {
-    fn stb(&self) -> Vec<u8>;
+    fn serialize_to_bytes(&self) -> Vec<u8>;
     fn sfb(bytes: &[u8]) -> Self;
-    fn type_signature() -> BitVec;
+    fn bitlen() -> usize;
 }
 
 impl SerializeBytes for u8 {
-    fn stb(&self) -> Vec<u8> {
+    fn serialize_to_bytes(&self) -> Vec<u8> {
         vec![*self]
     }
     fn sfb(bytes: &[u8]) -> Self {
         bytes[0]
     }
-
-    fn type_signature() -> BitVec {
-        BitVec::from_elem(2, false)
-    }
+    fn bitlen() -> usize { 8 }
 }
 
 impl SerializeBytes for u16 {
-    fn stb(&self) -> Vec<u8> {
+    fn serialize_to_bytes(&self) -> Vec<u8> {
         self.to_le_bytes().to_vec()
     }
 
     fn sfb(bytes: &[u8]) -> Self {
         Self::from_le_bytes([bytes[0], bytes[1]])
     }
-
-    fn type_signature() -> BitVec {
-        let mut bv = BitVec::new();
-        bv.push(false);
-        bv.push(true);
-        bv
-    }
+    fn bitlen() -> usize { 16 }
 }
 
 impl<X> HuffmanNode<X> {
@@ -95,25 +86,34 @@ impl<X> HuffmanNode<X> {
         gen_entries(self, BitVec::new())
     }
 
-    fn to_bits(&self) -> BitVec where X: SerializeBytes, X: std::fmt::Debug {
+    fn to_bitnode(&self) -> BitVec where X: SerializeBytes {
         let mut bv = BitVec::new();
         match &self.node_type {
             NodeType::Leaf(symbol) => {
                 bv.push(true);
-                bv.extend( BitVec::from_bytes(&symbol.stb()) );
-                println!("symbol {:?}", symbol);
+                bv.extend( BitVec::from_bytes(&symbol.serialize_to_bytes()) );
             }
-            NodeType::Internal(a, b) => {
-                println!("internal");
+            NodeType::Internal(_, _) => {
                 bv.push(false);
-                bv.extend( a.to_bits() );
-                bv.extend( b.to_bits() );
+                bv.extend( self.to_bits() );
             }
         }
         bv
     }
 
-    fn from_bitnode<R>(br: &mut BitReader<R, NoPadding>, readnleaf: usize) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializeBytes, X: std::fmt::Debug, R: std::io::Read {
+    fn to_bits(&self) -> BitVec where X: SerializeBytes {
+        let mut bv = BitVec::new();
+        match &self.node_type {
+            NodeType::Internal(node_a, node_b) => {
+                bv.extend( node_a.to_bitnode() );
+                bv.extend( node_b.to_bitnode() );
+                bv
+            },
+            _ => panic!("this node should not be a leaf")
+        }
+    }
+
+    fn from_bitnode<R>(br: &mut BitReader<R, NoPadding>, readnleaf: usize) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializeBytes, R: std::io::Read {
         match br.next() {
             Some(true) => {
                 let mut bv = BitVec::new();
@@ -124,11 +124,9 @@ impl<X> HuffmanNode<X> {
                     }
                 }
                 let symbol = X::sfb( &bv.to_bytes() );
-                println!("symbol {:?}", symbol);
                 Some(( Self {weight: 0, node_type: NodeType::Leaf(symbol)}, br ))
             }
             Some(false) => {
-                println!("internal");
                 let x = Self::from_bits(br, readnleaf)?;
                 Some(x)
             }
@@ -136,7 +134,7 @@ impl<X> HuffmanNode<X> {
         }
     }
 
-    fn from_bits<R>(br: &mut BitReader<R, NoPadding>, readnleaf: usize) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializeBytes, X: std::fmt::Debug, R: std::io::Read {
+    fn from_bits<R>(br: &mut BitReader<R, NoPadding>, readnleaf: usize) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializeBytes, R: std::io::Read {
         let (node_a, ba) = Self::from_bitnode(br, readnleaf)?;
         let (node_b, bb) = Self::from_bitnode(ba, readnleaf)?;
         Some(( Self {weight: 0, node_type: NodeType::Internal(Box::new(node_a), Box::new(node_b))}, bb ))
@@ -146,8 +144,7 @@ impl<X> HuffmanNode<X> {
         let mut file = File::create(filename)?;
         let mut bw = BitWriter::new(&mut file);
 
-        let mut bv = X::type_signature();
-        bv.extend(self.to_bits());
+        let bv = self.to_bits();
         for bit in bv {
             bw.write_bit(bit)?;
         }
@@ -158,12 +155,7 @@ impl<X> HuffmanNode<X> {
         let file = File::open(filename)?;
         let mut br = BitReader::new(&file);
 
-        //type_signature
-        br.next().unwrap();
-        let readnleaf = if br.next().unwrap() { 16 } else { 8 };
-        println!("readnleaf {}", readnleaf);
-
-        let (hufftree, _) = Self::from_bits(&mut br, readnleaf).unwrap();
+        let (hufftree, _) = Self::from_bits(&mut br, X::bitlen()).unwrap();
         Ok( hufftree )
     }
 }
