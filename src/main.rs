@@ -9,7 +9,7 @@ use std::env;
 use indicatif::{ProgressBar, ProgressStyle};
 
 mod huffman;
-use huffman::{count_freqs, huffman_code, gen_dictionary, encode, decode, HuffmanNode};
+use huffman::{count_freqs, encode, decode, HuffmanNode};
 
 fn bar(total_size: u64) -> ProgressBar { //from indicatif example "download.rs"
     let pb = ProgressBar::new(total_size);
@@ -136,7 +136,7 @@ fn used_from(unused_symbols: &[u8]) -> Vec<u8> {
 fn dummy_tree() -> HuffmanNode<u16> {
     let contents: Vec<u16> = vec![1,1,2,2,2,6,6,4,3,3,3,3,3,5,7,7,7,7,8,8,9,9];
     let freqs = count_freqs(contents.into_iter());
-    huffman_code(freqs)
+    HuffmanNode::from_weights(freqs)
 }
 
 fn main() -> Result<()> {
@@ -260,8 +260,8 @@ fn main() -> Result<()> {
 
             let tree = dummy_tree();
             
-            let edict = gen_dictionary(tree);
-            println!("highest symbol number should have shortest code, and zero-freq symbols (0) should not occur:\n{:?}", edict);
+            let edict = tree.to_dictionary();
+            println!("{:?}", edict);
             let message = vec![3,1,4,1,5,9];
             let encoded = encode(&message, edict);
             print!("encoded stream:");

@@ -15,38 +15,6 @@ pub struct HuffmanNode<X> {
     node_type: NodeType<X>
 }
 
-impl<X> HuffmanNode<X> {
-    pub fn new(a: HuffmanNode<X>, b: HuffmanNode<X>) -> Self {
-        Self { weight: a.weight + b.weight , node_type: NodeType::Internal(Box::new(a), Box::new(b))}
-    }
-}
-
-pub fn count_freqs<X>(contents: X) -> HashMap<X::Item, usize> where X: Iterator, X::Item: Eq, X::Item: Hash {
-    let mut counters = HashMap::new();
-    for symbol in contents {
-        let location = counters.entry(symbol).or_insert(0);
-        *location += 1;
-    }
-    counters
-}
-
-
-pub fn huffman_code<X>(weights: HashMap<X, usize>) -> HuffmanNode<X> where X: Eq, X: Hash, X: Ord, X: Copy {
-    let mut occuring: Vec<(X, usize)> = weights.into_iter().filter(|(_, weight)| *weight!=0).collect();
-    occuring.sort_by_key(|(sym, _)| *sym); //(collect->filter->)sort(->into_iter) is required to make the tree deterministic
-    let mut nodes: Vec<HuffmanNode<X>> = occuring.into_iter().map(|(sym, weight)| HuffmanNode { weight, node_type: NodeType::Leaf(sym) }).collect();
-    loop {
-        nodes.sort_by_key(|f| Reverse(f.weight));
-        let a = nodes.pop().unwrap();
-        let b = nodes.pop().unwrap();
-        let new_node = HuffmanNode::new(a, b);
-        if nodes.is_empty() {
-            return new_node;
-        }
-        nodes.push(new_node);
-    }
-}
-
 type EncodeDict<X> = HashMap<X, BitVec>;
 
 fn gen_entries<X>(node: HuffmanNode<X>, prefix: BitVec) -> EncodeDict<X> where X: Eq, X: Hash {
@@ -65,8 +33,39 @@ fn gen_entries<X>(node: HuffmanNode<X>, prefix: BitVec) -> EncodeDict<X> where X
     }
 }
 
-pub fn gen_dictionary<X>(root_node: HuffmanNode<X>) -> EncodeDict<X> where X: Eq, X: Hash {
-    gen_entries(root_node, BitVec::new())
+impl<X> HuffmanNode<X> {
+    pub fn new(a: HuffmanNode<X>, b: HuffmanNode<X>) -> Self {
+        Self { weight: a.weight + b.weight , node_type: NodeType::Internal(Box::new(a), Box::new(b))}
+    }
+
+    pub fn from_weights(weights: HashMap<X, usize>) -> Self where X: Eq, X: Hash, X: Ord, X: Copy {
+        let mut occuring: Vec<(X, usize)> = weights.into_iter().filter(|(_, weight)| *weight!=0).collect();
+        occuring.sort_by_key(|(sym, _)| *sym); //(collect->filter->)sort(->into_iter) is required to make the tree deterministic
+        let mut nodes: Vec<HuffmanNode<X>> = occuring.into_iter().map(|(sym, weight)| HuffmanNode { weight, node_type: NodeType::Leaf(sym) }).collect();
+        loop {
+            nodes.sort_by_key(|f| Reverse(f.weight));
+            let a = nodes.pop().unwrap();
+            let b = nodes.pop().unwrap();
+            let new_node = HuffmanNode::new(a, b);
+            if nodes.is_empty() {
+                return new_node;
+            }
+            nodes.push(new_node);
+        }
+    }
+
+    pub fn to_dictionary(self) -> EncodeDict<X> where X: Eq, X: Hash {
+        gen_entries(self, BitVec::new())
+    }
+}
+
+pub fn count_freqs<X>(contents: X) -> HashMap<X::Item, usize> where X: Iterator, X::Item: Eq, X::Item: Hash {
+    let mut counters = HashMap::new();
+    for symbol in contents {
+        let location = counters.entry(symbol).or_insert(0);
+        *location += 1;
+    }
+    counters
 }
 
 pub fn encode<X>(input: &[X], dic: EncodeDict<X>) -> Vec<u8> where X: Eq, X: PartialEq, X: Hash {
