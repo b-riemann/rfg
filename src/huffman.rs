@@ -34,29 +34,30 @@ fn gen_entries<X>(node: HuffmanNode<X>, prefix: BitVec) -> EncodeDict<X> where X
     }
 }
 
-pub trait SerializeBytes {
-    fn serialize_to_bytes(&self) -> Vec<u8>;
-    fn sfb(bytes: &[u8]) -> Self;
+pub trait SerializedBits {
+    fn serialize_to_bits(&self) -> BitVec;
+    fn serialize_from_bits(bv: &BitVec) -> Self;
     fn bitlen() -> usize;
 }
 
-impl SerializeBytes for u8 {
-    fn serialize_to_bytes(&self) -> Vec<u8> {
-        vec![*self]
+impl SerializedBits for u8 {
+    fn serialize_to_bits(&self) -> BitVec {
+        BitVec::from_bytes( &vec![*self] )
     }
-    fn sfb(bytes: &[u8]) -> Self {
-        bytes[0]
+    fn serialize_from_bits(bv: &BitVec) -> Self {
+        bv.to_bytes()[0]
     }
     fn bitlen() -> usize { 8 }
 }
 
-impl SerializeBytes for u16 {
-    fn serialize_to_bytes(&self) -> Vec<u8> {
-        self.to_le_bytes().to_vec()
+impl SerializedBits for u16 {
+    fn serialize_to_bits(&self) -> BitVec {
+        BitVec::from_bytes( &self.to_le_bytes().to_vec() )
     }
 
-    fn sfb(bytes: &[u8]) -> Self {
-        Self::from_le_bytes([bytes[0], bytes[1]])
+    fn serialize_from_bits(bv: &BitVec) -> Self {
+        let bvb = bv.to_bytes();
+        Self::from_le_bytes([bvb[0],bvb[1]])
     }
     fn bitlen() -> usize { 16 }
 }
@@ -86,12 +87,12 @@ impl<X> HuffmanNode<X> {
         gen_entries(self, BitVec::new())
     }
 
-    fn to_bitnode(&self) -> BitVec where X: SerializeBytes {
+    fn to_bitnode(&self) -> BitVec where X: SerializedBits {
         let mut bv = BitVec::new();
         match &self.node_type {
             NodeType::Leaf(symbol) => {
                 bv.push(true);
-                bv.extend( BitVec::from_bytes(&symbol.serialize_to_bytes()) );
+                bv.extend( &symbol.serialize_to_bits() );
             }
             NodeType::Internal(_, _) => {
                 bv.push(false);
@@ -101,7 +102,7 @@ impl<X> HuffmanNode<X> {
         bv
     }
 
-    fn to_bits(&self) -> BitVec where X: SerializeBytes {
+    fn to_bits(&self) -> BitVec where X: SerializedBits {
         let mut bv = BitVec::new();
         match &self.node_type {
             NodeType::Internal(node_a, node_b) => {
@@ -113,7 +114,7 @@ impl<X> HuffmanNode<X> {
         }
     }
 
-    fn from_bitnode<R>(br: &mut BitReader<R, NoPadding>, readnleaf: usize) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializeBytes, R: std::io::Read {
+    fn from_bitnode<R>(br: &mut BitReader<R, NoPadding>, readnleaf: usize) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializedBits, R: std::io::Read {
         match br.next() {
             Some(true) => {
                 let mut bv = BitVec::new();
@@ -123,7 +124,7 @@ impl<X> HuffmanNode<X> {
                         None => return None
                     }
                 }
-                let symbol = X::sfb( &bv.to_bytes() );
+                let symbol = X::serialize_from_bits( &bv );
                 Some(( Self {weight: 0, node_type: NodeType::Leaf(symbol)}, br ))
             }
             Some(false) => {
@@ -134,13 +135,13 @@ impl<X> HuffmanNode<X> {
         }
     }
 
-    fn from_bits<R>(br: &mut BitReader<R, NoPadding>, readnleaf: usize) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializeBytes, R: std::io::Read {
+    fn from_bits<R>(br: &mut BitReader<R, NoPadding>, readnleaf: usize) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializedBits, R: std::io::Read {
         let (node_a, ba) = Self::from_bitnode(br, readnleaf)?;
         let (node_b, bb) = Self::from_bitnode(ba, readnleaf)?;
         Some(( Self {weight: 0, node_type: NodeType::Internal(Box::new(node_a), Box::new(node_b))}, bb ))
     }
 
-    pub fn to_file<P>(&self, filename: P) -> io::Result<()> where X: SerializeBytes, X: std::fmt::Debug, P: AsRef<Path> {
+    pub fn to_file<P>(&self, filename: P) -> io::Result<()> where X: SerializedBits, X: std::fmt::Debug, P: AsRef<Path> {
         let mut file = File::create(filename)?;
         let mut bw = BitWriter::new(&mut file);
 
@@ -151,7 +152,7 @@ impl<X> HuffmanNode<X> {
         Ok(())
     }
 
-    pub fn from_file<P>(filename: P) -> io::Result<Self> where X: SerializeBytes, X: std::fmt::Debug, P: AsRef<Path> {
+    pub fn from_file<P>(filename: P) -> io::Result<Self> where X: SerializedBits, X: std::fmt::Debug, P: AsRef<Path> {
         let file = File::open(filename)?;
         let mut br = BitReader::new(&file);
 
