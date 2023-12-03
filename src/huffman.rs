@@ -114,11 +114,11 @@ impl<X> HuffmanNode<X> {
         }
     }
 
-    fn from_bitnode<R>(br: &mut BitReader<R, NoPadding>, readnleaf: usize) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializedBits, R: std::io::Read {
+    fn from_bitnode<R>(br: &mut BitReader<R, NoPadding>) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializedBits, R: std::io::Read {
         match br.next() {
             Some(true) => {
                 let mut bv = BitVec::new();
-                for _ in 0..readnleaf {
+                for _ in 0..X::bitlen() {
                     match br.next() {
                         Some(bit) => bv.push(bit),
                         None => return None
@@ -128,16 +128,16 @@ impl<X> HuffmanNode<X> {
                 Some(( Self {weight: 0, node_type: NodeType::Leaf(symbol)}, br ))
             }
             Some(false) => {
-                let x = Self::from_bits(br, readnleaf)?;
+                let x = Self::from_bits(br)?;
                 Some(x)
             }
             None => None
         }
     }
 
-    fn from_bits<R>(br: &mut BitReader<R, NoPadding>, readnleaf: usize) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializedBits, R: std::io::Read {
-        let (node_a, ba) = Self::from_bitnode(br, readnleaf)?;
-        let (node_b, bb) = Self::from_bitnode(ba, readnleaf)?;
+    fn from_bits<R>(br: &mut BitReader<R, NoPadding>) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializedBits, R: std::io::Read {
+        let (node_a, ba) = Self::from_bitnode(br)?;
+        let (node_b, bb) = Self::from_bitnode(ba)?;
         Some(( Self {weight: 0, node_type: NodeType::Internal(Box::new(node_a), Box::new(node_b))}, bb ))
     }
 
@@ -156,7 +156,7 @@ impl<X> HuffmanNode<X> {
         let file = File::open(filename)?;
         let mut br = BitReader::new(&file);
 
-        let (hufftree, _) = Self::from_bits(&mut br, X::bitlen()).unwrap();
+        let (hufftree, _) = Self::from_bits(&mut br).unwrap();
         Ok( hufftree )
     }
 }
