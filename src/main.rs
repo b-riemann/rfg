@@ -259,7 +259,7 @@ fn main() -> Result<()> {
             //let contents = read_u16(filename)?;
 
             let tree = dummy_tree();
-            
+            tree.to_file("tree.test")?;
             let edict = tree.to_dictionary();
             println!("{:?}", edict);
             let message = vec![3,1,4,1,5,9];
@@ -281,7 +281,8 @@ fn main() -> Result<()> {
             write(filename, contents)
         }
         "test:huffdecode16bit" => {
-            let tree = dummy_tree();
+            //let tree = dummy_tree();
+            let tree: HuffmanNode<u16> = HuffmanNode::from_file("tree.test")?;
 
             let encoded = vec![151,87,60];
             let decoded = decode(&encoded, tree);
