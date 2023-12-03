@@ -1,29 +1,40 @@
-use bitstream::BitReader;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::cmp::Reverse;
 use bit_vec::BitVec;
-use bitstream::BitWriter;
+use bitstream::{BitReader, BitWriter};
 
-enum NodeType {
-    Internal (Box<HuffmanNode>, Box<HuffmanNode>),
-    Leaf(usize)
+
+enum NodeType<X> {
+    Internal (Box<HuffmanNode<X>>, Box<HuffmanNode<X>>),
+    Leaf(X)
 }
 
-pub struct HuffmanNode {
+pub struct HuffmanNode<X> {
     pub weight: usize,
-    node_type: NodeType
+    node_type: NodeType<X>
 }
 
-impl HuffmanNode {
-    pub fn new(a: HuffmanNode, b: HuffmanNode) -> Self {
+impl<X> HuffmanNode<X> {
+    pub fn new(a: HuffmanNode<X>, b: HuffmanNode<X>) -> Self {
         Self { weight: a.weight + b.weight , node_type: NodeType::Internal(Box::new(a), Box::new(b))}
     }
 }
 
-pub fn huffman_code(weights: &[usize]) -> HuffmanNode {
-    let occuring_symbols = (0..weights.len()).filter(|&w| w!=0);
+pub fn count_freqs<X>(contents: X) -> HashMap<X::Item, usize> where X: Iterator, X::Item: Eq, X::Item: Hash {
+    let mut counters = HashMap::new();
+    for symbol in contents {
+        let location = counters.entry(symbol).or_insert(0);
+        *location += 1;
+    }
+    counters
+}
 
-    let mut nodes: Vec<HuffmanNode> = occuring_symbols.map(|sym| HuffmanNode { weight: weights[sym], node_type: NodeType::Leaf(sym) }).collect();
+
+pub fn huffman_code<X>(weights: HashMap<X, usize>) -> HuffmanNode<X> where X: Eq, X: Hash, X: Ord, X: Copy {
+    let mut occuring: Vec<(X, usize)> = weights.into_iter().filter(|(_, weight)| *weight!=0).collect();
+    occuring.sort_by_key(|(sym, _)| *sym); //(collect->filter->)sort(->into_iter) is required to make the tree deterministic
+    let mut nodes: Vec<HuffmanNode<X>> = occuring.into_iter().map(|(sym, weight)| HuffmanNode { weight, node_type: NodeType::Leaf(sym) }).collect();
     loop {
         nodes.sort_by_key(|f| Reverse(f.weight));
         let a = nodes.pop().unwrap();
@@ -36,10 +47,10 @@ pub fn huffman_code(weights: &[usize]) -> HuffmanNode {
     }
 }
 
-type EncodeDict = HashMap<usize, BitVec>;
+type EncodeDict<X> = HashMap<X, BitVec>;
 
-fn gen_entries(node: HuffmanNode, prefix: BitVec) -> EncodeDict {
-    let mut dic: EncodeDict = HashMap::new();
+fn gen_entries<X>(node: HuffmanNode<X>, prefix: BitVec) -> EncodeDict<X> where X: Eq, X: Hash {
+    let mut dic: EncodeDict<X> = HashMap::new();
     match node.node_type {
         NodeType::Leaf(sym) => { dic.insert(sym, prefix); dic }
         NodeType::Internal(node_a, node_b) => {
@@ -54,11 +65,11 @@ fn gen_entries(node: HuffmanNode, prefix: BitVec) -> EncodeDict {
     }
 }
 
-pub fn gen_dictionary(root_node: HuffmanNode) -> EncodeDict {
+pub fn gen_dictionary<X>(root_node: HuffmanNode<X>) -> EncodeDict<X> where X: Eq, X: Hash {
     gen_entries(root_node, BitVec::new())
 }
 
-pub fn encode(input: &[usize], dic: EncodeDict) -> Vec<u8> {
+pub fn encode<X>(input: &[X], dic: EncodeDict<X>) -> Vec<u8> where X: Eq, X: PartialEq, X: Hash {
     let mut encoded: Vec<u8> = Vec::new();
     let mut bw = BitWriter::new(&mut encoded);
     for symbol in input {
@@ -71,14 +82,14 @@ pub fn encode(input: &[usize], dic: EncodeDict) -> Vec<u8> {
     encoded
 }
 
-fn get_internals(root_node: HuffmanNode) -> (HuffmanNode, HuffmanNode) {
+fn get_internals<X>(root_node: HuffmanNode<X>) -> (HuffmanNode<X>, HuffmanNode<X>) {
     match root_node.node_type {
         NodeType::Internal(node_a, node_b) => (*node_a, *node_b),
         _ => panic!("huffman root node should not be a leaf")
     }
 }
 
-pub fn decode(input: &[u8], root_node: HuffmanNode) -> Vec<usize> {
+pub fn decode<X>(input: &[u8], root_node: HuffmanNode<X>) -> Vec<X> where X: Copy {
     let mut br = BitReader::new(input);
     let (rootnode_a, rootnode_b) = get_internals(root_node);
 

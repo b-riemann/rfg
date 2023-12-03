@@ -1,5 +1,6 @@
 use std::fs::{read,write};
 use std::collections::HashSet;
+
 use std::cmp::Reverse;
 use huffman_coding::{self, HuffmanReader, HuffmanWriter};
 use std::io::{Write, Result, ErrorKind, Error, Read};
@@ -8,7 +9,7 @@ use std::env;
 use indicatif::{ProgressBar, ProgressStyle};
 
 mod huffman;
-use huffman::{huffman_code, gen_dictionary, encode, decode as h16decode};
+use huffman::{count_freqs, huffman_code, gen_dictionary, encode, decode, HuffmanNode};
 
 fn bar(total_size: u64) -> ProgressBar { //from indicatif example "download.rs"
     let pb = ProgressBar::new(total_size);
@@ -123,6 +124,19 @@ fn used_from(unused_symbols: &[u8]) -> Vec<u8> {
         used.remove(&ch);
     }
     order_symbols(used)
+}
+
+
+// fn read_u16(filename: String) -> Result<Vec<u16>> {
+//     let contents = read(filename)?;
+//     let contents_u16: Vec<u16> = contents.chunks_exact(2).map(|bytes| u16::from_le_bytes([bytes[0],bytes[1]])).collect();
+//     Ok(contents_u16)
+// }
+
+fn dummy_tree() -> HuffmanNode<u16> {
+    let contents: Vec<u16> = vec![1,1,2,2,2,6,6,4,3,3,3,3,3,5,7,7,7,7,8,8,9,9];
+    let freqs = count_freqs(contents.into_iter());
+    huffman_code(freqs)
 }
 
 fn main() -> Result<()> {
@@ -240,13 +254,15 @@ fn main() -> Result<()> {
             writer.write(&contents)?;
             Ok(())
         }
-        "test-huffencode16bit" => {
-            let freqs: Vec<usize> = (0..16).collect();
-            let tree = huffman_code(&freqs);
+        "test:huffencode16bit" => {
+            //let filename = args.next().unwrap();
+            //let contents = read_u16(filename)?;
+
+            let tree = dummy_tree();
             
             let edict = gen_dictionary(tree);
             println!("highest symbol number should have shortest code, and zero-freq symbols (0) should not occur:\n{:?}", edict);
-            let message: Vec<usize> = vec![3,1,4,1,5,9];
+            let message = vec![3,1,4,1,5,9];
             let encoded = encode(&message, edict);
             print!("encoded stream:");
             let _: Vec<_> = encoded.into_iter().map(|num| print!(" {:08b}({})", num, num)).collect();
@@ -264,12 +280,11 @@ fn main() -> Result<()> {
             reader.read_to_end(&mut contents)?;
             write(filename, contents)
         }
-        "test-huffdecode16bit" => {
-            let freqs: Vec<usize> = (0..16).collect();
-            let tree = huffman_code(&freqs);
+        "test:huffdecode16bit" => {
+            let tree = dummy_tree();
 
-            let encoded = vec![8,24,3,58];
-            let decoded = h16decode(&encoded, tree);
+            let encoded = vec![151,87,60];
+            let decoded = decode(&encoded, tree);
             println!("decoded {:?}", decoded);
             Ok(())
         }
