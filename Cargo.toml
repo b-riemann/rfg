@@ -8,5 +8,4 @@ edition = "2021"
 [dependencies]
 bit-vec = "0.6.3"
 bitstream-rs = "0.2.0"
-huffman-coding = "0.1.2"
 indicatif = "0.17.7"
