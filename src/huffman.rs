@@ -83,7 +83,7 @@ impl<X> HuffmanNode<X> {
         }
     }
 
-    pub fn to_dictionary(self) -> EncodeDict<X> where X: Eq, X: Hash {
+    pub fn encoding_dictionary(self) -> EncodeDict<X> where X: Eq, X: Hash {
         gen_entries(self, BitVec::new())
     }
 
@@ -161,20 +161,20 @@ impl<X> HuffmanNode<X> {
     }
 }
 
-pub fn count_freqs<X>(contents: X) -> HashMap<X::Item, usize> where X: Iterator, X::Item: Eq, X::Item: Hash {
+pub fn count_freqs<I>(input: I) -> HashMap<I::Item, usize> where I: Iterator, I::Item: Eq, I::Item: Hash {
     let mut counters = HashMap::new();
-    for symbol in contents {
+    for symbol in input {
         let location = counters.entry(symbol).or_insert(0);
         *location += 1;
     }
     counters
 }
 
-pub fn encode<X>(input: &[X], dic: EncodeDict<X>) -> Vec<u8> where X: Eq, X: PartialEq, X: Hash {
+pub fn encode<I>(input: I, dic: EncodeDict<I::Item>) -> Vec<u8> where I: Iterator, I::Item: Eq, I::Item: PartialEq, I::Item: Hash {
     let mut encoded: Vec<u8> = Vec::new();
     let mut bw = BitWriter::new(&mut encoded);
     for symbol in input {
-        let code = dic.get(symbol).expect("symbol should be in dictionary");
+        let code = dic.get(&symbol).expect("symbol should be in dictionary");
         for bit in code {
             bw.write_bit(bit).unwrap();
         }

@@ -2,8 +2,7 @@ use std::fs::{read,write};
 use std::collections::HashSet;
 
 use std::cmp::Reverse;
-use huffman_coding::{self, HuffmanReader, HuffmanWriter};
-use std::io::{Write, Result, ErrorKind, Error, Read};
+use std::io::{Result, ErrorKind, Error};
 use std::env;
 
 use indicatif::{ProgressBar, ProgressStyle};
@@ -244,26 +243,23 @@ fn main() -> Result<()> {
         "huffencode<-" => {
             let filename = args.next().unwrap();
             let contents = read(filename)?;
+            let input = contents.into_iter();
 
-            let tree = huffman_coding::HuffmanTree::from_data(&contents);
-            let tree_table = tree.to_table();
-            write(hufftree_file, tree_table)?;
+            let freqs = count_freqs(input.clone());
+            let tree = HuffmanNode::from_weights(freqs);
+            tree.to_file(hufftree_file)?;
 
-            let mut huffcodes = std::fs::File::create(huffbin_file)?;
-            let mut writer = HuffmanWriter::new(&mut huffcodes, &tree);
-            writer.write(&contents)?;
-            Ok(())
+            let edict = tree.encoding_dictionary();
+            let out = encode(input, edict);
+            write(huffbin_file, out)
         }
         "test:huffencode16bit" => {
-            //let filename = args.next().unwrap();
-            //let contents = read_u16(filename)?;
-
             let tree = dummy_tree();
             tree.to_file("tree.test")?;
-            let edict = tree.to_dictionary();
+            let edict = tree.encoding_dictionary();
             println!("{:?}", edict);
-            let message = vec![3,1,4,1,5,9];
-            let encoded = encode(&message, edict);
+            let message = vec![3,1,4,1,5,9].into_iter();
+            let encoded = encode(message, edict);
             print!("encoded stream:");
             let _: Vec<_> = encoded.into_iter().map(|num| print!(" {:08b}({})", num, num)).collect();
             Ok(())
@@ -271,14 +267,11 @@ fn main() -> Result<()> {
         "huffdecode->" => {
             let filename = args.next().unwrap();
 
-            let tree_table = read(hufftree_file)?;
-            let tree = huffman_coding::HuffmanTree::from_table(&tree_table);
+            let tree: HuffmanNode<u8> = HuffmanNode::from_file(hufftree_file)?;
 
-            let huffbin = std::fs::File::open(huffbin_file)?;
-            let mut reader = HuffmanReader::new(&huffbin, tree);
-            let mut contents: Vec<u8> = Vec::new();
-            reader.read_to_end(&mut contents)?;
-            write(filename, contents)
+            let input = read(huffbin_file)?;
+            let output = decode(&input, tree);
+            write(filename, output)
         }
         "test:huffdecode16bit" => {
             //let tree = dummy_tree();
