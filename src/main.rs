@@ -20,7 +20,6 @@ fn bar(total_size: u64) -> ProgressBar { //from indicatif example "download.rs"
 }
 
 fn make_rotund(content: &[u8]) -> Vec<u8> {
-    //let mut rotund_probs = [0; 256];
     let mut rotund_overlap = [0; 256];
     let mut rotund_freq = [0u32; 256];
 
@@ -51,14 +50,12 @@ fn make_rotund(content: &[u8]) -> Vec<u8> {
             rotund_overlap[target] = overlap;
             rotund_freq[target] = 1;
         }
-        //rotund_probs[target] += overlap*overlap*overlap; //cubic
     }
 
     let mut keys : Vec<u8> = (0..=255u8).collect();
     //keys.sort_by_key(|x| Reverse(&rotund_probs[*x as usize]));
     keys.sort_by_key(|&x| { let xi=x as usize; Reverse((rotund_overlap[xi] << 32) +(rotund_freq[xi] as usize)) });
     keys
-    
 }
 
 fn prob_encode(reversed: &[u8]) -> Vec<u8> {
@@ -124,7 +121,6 @@ fn used_from(unused_symbols: &[u8]) -> Vec<u8> {
     }
     order_symbols(used)
 }
-
 
 // fn read_u16(filename: String) -> Result<Vec<u16>> {
 //     let contents = read(filename)?;
@@ -247,6 +243,7 @@ fn main() -> Result<()> {
 
             let freqs = count_freqs(input.clone());
             let tree = HuffmanNode::from_weights(freqs);
+            println!("{}", tree);
             tree.to_file(hufftree_file)?;
 
             let edict = tree.encoding_dictionary();
@@ -268,13 +265,13 @@ fn main() -> Result<()> {
             let filename = args.next().unwrap();
 
             let tree: HuffmanNode<u8> = HuffmanNode::from_file(hufftree_file)?;
-
+            println!("{}", tree);
+            
             let input = read(huffbin_file)?;
             let output = decode(&input, tree);
             write(filename, output)
         }
         "test:huffdecode16bit" => {
-            //let tree = dummy_tree();
             let tree: HuffmanNode<u16> = HuffmanNode::from_file("tree.test")?;
 
             let encoded = vec![151,87,60];
