@@ -69,9 +69,9 @@ impl<X> HuffmanNode<X> {
         Self { weight: a.weight + b.weight , node_type: NodeType::Internal(Box::new(a), Box::new(b))}
     }
 
-    pub fn from_weights(weights: HashMap<X, usize>) -> Self where X: Eq, X: Hash, X: Ord, X: Copy {
+    pub fn from_weights(weights: HashMap<X, usize>) -> Self where X: Hash, X: PartialOrd {
         let mut occuring: Vec<(X, usize)> = weights.into_iter().filter(|(_, weight)| *weight!=0).collect();
-        occuring.sort_by_key(|(sym, _)| *sym); //(collect->filter->)sort(->into_iter) is required to make the tree deterministic
+        occuring.sort_by(|(sym_a, _), (sym_b, _)| sym_a.partial_cmp(sym_b).unwrap()); // symbol-ordering required to make the tree deterministic
         let mut nodes: Vec<HuffmanNode<X>> = occuring.into_iter().map(|(sym, weight)| HuffmanNode { weight, node_type: NodeType::Leaf(sym) }).collect();
         loop {
             nodes.sort_by_key(|f| Reverse(f.weight));
