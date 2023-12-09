@@ -122,16 +122,10 @@ fn used_from(unused_symbols: &[u8]) -> Vec<u8> {
     order_symbols(used)
 }
 
-// fn read_u16(filename: String) -> Result<Vec<u16>> {
-//     let contents = read(filename)?;
-//     let contents_u16: Vec<u16> = contents.chunks_exact(2).map(|bytes| u16::from_le_bytes([bytes[0],bytes[1]])).collect();
-//     Ok(contents_u16)
-// }
-
-fn dummy_tree() -> HuffmanNode<u16> {
-    let contents: Vec<u16> = vec![1,1,2,2,2,6,6,4,3,3,3,3,3,5,7,7,7,7,8,8,9,9];
-    let freqs = count_freqs(contents.into_iter());
-    HuffmanNode::from_weights(freqs)
+fn read_u16(filename: String) -> Result<Vec<u16>> {
+    let contents = read(filename)?;
+    let contents_u16: Vec<u16> = contents.chunks_exact(2).map(|bytes| u16::from_le_bytes([bytes[0],bytes[1]])).collect();
+    Ok(contents_u16)
 }
 
 fn main() -> Result<()> {
@@ -246,20 +240,21 @@ fn main() -> Result<()> {
             println!("{}", tree);
             tree.to_file(hufftree_file)?;
 
-            let edict = tree.encoding_dictionary();
-            let out = encode(input, edict);
+            let out = encode(input, &tree);
             write(huffbin_file, out)
         }
-        "test:huffencode16bit" => {
-            let tree = dummy_tree();
-            tree.to_file("tree.test")?;
-            let edict = tree.encoding_dictionary();
-            println!("{:?}", edict);
-            let message = vec![3,1,4,1,5,9].into_iter();
-            let encoded = encode(message, edict);
-            print!("encoded stream:");
-            let _: Vec<_> = encoded.into_iter().map(|num| print!(" {:08b}({})", num, num)).collect();
-            Ok(())
+        "huffencode16" => {
+            let filename = args.next().unwrap();
+            let contents = read_u16(filename)?;
+            let input = contents.into_iter();
+
+            let freqs = count_freqs(input.clone());
+            let tree = HuffmanNode::from_weights(freqs);
+            println!("{}", tree);
+            tree.to_file(hufftree_file)?;
+
+            let out = encode(input, &tree);
+            write(huffbin_file, out)
         }
         "huffdecode->" => {
             let filename = args.next().unwrap();

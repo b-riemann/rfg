@@ -36,6 +36,25 @@ fn gen_entries<X>(node: &HuffmanNode<X>, prefix: BitVec) -> EncodeDict<X> where 
     }
 }
 
+fn encode_by_dict<I>(input: I, edict: EncodeDict<I::Item>) -> Vec<u8> where I: Iterator, I::Item: Eq, I::Item: Hash {
+    let mut encoded: Vec<u8> = Vec::new();
+    let mut bw = BitWriter::with_padding(&mut encoded, LengthPadding::new());
+    for symbol in input {
+        let code = edict.get(&symbol).expect("symbol should be in dictionary");
+        for bit in code {
+            bw.write_bit(bit).unwrap();
+        }
+    }
+    drop(bw);
+    encoded
+}
+
+pub fn encode<I>(input: I, tree: &HuffmanNode<I::Item>) -> Vec<u8> where I: Iterator, I::Item: Eq, I::Item: Hash, I::Item: Clone {
+    let edict = tree.encoding_dictionary();
+    encode_by_dict(input, edict)
+}
+
+
 pub trait SerializedBits {
     fn serialize_to_bits(&self) -> BitVec;
     fn serialize_from_bits(bv: &BitVec) -> Self;
@@ -185,19 +204,6 @@ pub fn count_freqs<I>(input: I) -> HashMap<I::Item, usize> where I: Iterator, I:
     counters
 }
 
-pub fn encode<I>(input: I, edict: EncodeDict<I::Item>) -> Vec<u8> where I: Iterator, I::Item: Eq, I::Item: PartialEq, I::Item: Hash, I::Item: std::fmt::Debug, I: Clone {
-    let mut encoded: Vec<u8> = Vec::new();
-    let mut bw = BitWriter::with_padding(&mut encoded, LengthPadding::new());
-    for symbol in input.clone() {
-        let code = edict.get(&symbol).expect("symbol should be in dictionary");
-        for bit in code {
-            bw.write_bit(bit).unwrap();
-        }
-    }
-    drop(bw);
-    encoded
-}
-
 fn get_internals<X>(root_node: HuffmanNode<X>) -> (HuffmanNode<X>, HuffmanNode<X>) {
     match root_node.node_type {
         NodeType::Internal(node_a, node_b) => (*node_a, *node_b),
@@ -261,10 +267,8 @@ fn encode_decode() {
     let input = input_vec.clone().into_iter();
     let freqs = count_freqs(input.clone());
     let tree = HuffmanNode::from_weights(freqs);
-
-    let edict = tree.encoding_dictionary();
     
-    let compressed = encode(input, edict);
+    let compressed = encode(input, &tree);
 
     let output_vec = decode(&compressed, tree);
     assert_eq!(input_vec, output_vec);
