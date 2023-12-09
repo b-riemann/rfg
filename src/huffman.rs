@@ -2,7 +2,7 @@ use std::{collections::HashMap, io};
 use std::hash::Hash;
 use std::cmp::Reverse;
 use bit_vec::BitVec;
-use bitstream::{BitReader, BitWriter, NoPadding};
+use bitstream::{BitReader, BitWriter, Padding, LengthPadding};
 use std::path::Path;
 use std::fs::File;
 
@@ -114,7 +114,7 @@ impl<X> HuffmanNode<X> {
         }
     }
 
-    fn from_bitnode<R>(br: &mut BitReader<R, NoPadding>) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializedBits, R: std::io::Read {
+    fn from_bitnode<R,P>(br: &mut BitReader<R, P>) -> Option<(Self, &mut BitReader<R, P>)> where X: SerializedBits, R: std::io::Read, P: Padding  {
         match br.next() {
             Some(true) => {
                 let mut bv = BitVec::new();
@@ -135,7 +135,7 @@ impl<X> HuffmanNode<X> {
         }
     }
 
-    fn from_bits<R>(br: &mut BitReader<R, NoPadding>) -> Option<(Self, &mut BitReader<R, NoPadding>)> where X: SerializedBits, R: std::io::Read {
+    fn from_bits<R,P>(br: &mut BitReader<R, P>) -> Option<(Self, &mut BitReader<R, P>)> where X: SerializedBits, R: std::io::Read, P: Padding {
         let (node_a, ba) = Self::from_bitnode(br)?;
         let (node_b, bb) = Self::from_bitnode(ba)?;
         Some(( Self {weight: 0, node_type: NodeType::Internal(Box::new(node_a), Box::new(node_b))}, bb ))
@@ -143,6 +143,9 @@ impl<X> HuffmanNode<X> {
 
     pub fn to_file<P>(&self, filename: P) -> io::Result<()> where X: SerializedBits, X: std::fmt::Debug, P: AsRef<Path> {
         let mut file = File::create(filename)?;
+
+        // standard bit writer will will the last bits of remaining byte with 0-bits.
+        // because of the tree structure with only internal nodes as 0-bits, this is not a problem when reading later.
         let mut bw = BitWriter::new(&mut file);
 
         let bv = self.to_bits();
@@ -161,6 +164,16 @@ impl<X> HuffmanNode<X> {
     }
 }
 
+impl<X> std::fmt::Display for HuffmanNode<X> where X: std::fmt::Debug {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.node_type {
+            NodeType::Leaf(symbol) => write!(f, "_{:?}_", *symbol),
+            NodeType::Internal(a, b) => write!(f, "({},{})", *a, *b)
+        }
+    }
+}
+
+
 pub fn count_freqs<I>(input: I) -> HashMap<I::Item, usize> where I: Iterator, I::Item: Eq, I::Item: Hash {
     let mut counters = HashMap::new();
     for symbol in input {
@@ -170,10 +183,10 @@ pub fn count_freqs<I>(input: I) -> HashMap<I::Item, usize> where I: Iterator, I:
     counters
 }
 
-pub fn encode<I>(input: I, dic: EncodeDict<I::Item>) -> Vec<u8> where I: Iterator, I::Item: Eq, I::Item: PartialEq, I::Item: Hash {
+pub fn encode<I>(input: I, dic: EncodeDict<I::Item>) -> Vec<u8> where I: Iterator, I::Item: Eq, I::Item: PartialEq, I::Item: Hash, I::Item: std::fmt::Debug, I: Clone {
     let mut encoded: Vec<u8> = Vec::new();
-    let mut bw = BitWriter::new(&mut encoded);
-    for symbol in input {
+    let mut bw = BitWriter::with_padding(&mut encoded, LengthPadding::new());
+    for symbol in input.clone() {
         let code = dic.get(&symbol).expect("symbol should be in dictionary");
         for bit in code {
             bw.write_bit(bit).unwrap();
@@ -190,27 +203,36 @@ fn get_internals<X>(root_node: HuffmanNode<X>) -> (HuffmanNode<X>, HuffmanNode<X
     }
 }
 
-pub fn decode<X>(input: &[u8], root_node: HuffmanNode<X>) -> Vec<X> where X: Copy {
-    let mut br = BitReader::new(input);
+pub fn decode<X>(input: &[u8], root_node: HuffmanNode<X>) -> Vec<X> where X: Copy, X: std::fmt::Debug {
+    let mut br = BitReader::with_padding(input, LengthPadding::new());
     let (rootnode_a, rootnode_b) = get_internals(root_node);
 
     let mut node = match br.next() {
-        Some(false) => &rootnode_a.node_type,
         Some(true) => &rootnode_b.node_type,
+        Some(false) => &rootnode_a.node_type,
         None => panic!("bitreader should not have empty content at beginning")
     };
 
     let mut output = Vec::new();
 
-    while let Some(bit) = br.next() {
+    loop {
         node = match node {
             NodeType::Leaf(symbol) => {
                 output.push(*symbol);
-                if bit { &rootnode_b.node_type } else { &rootnode_a.node_type } 
+                match br.next() {
+                    Some(true) => &rootnode_b.node_type,
+                    Some(false) => &rootnode_a.node_type,
+                    None => break
+                }
             }
-            NodeType::Internal(node_a, node_b) => if bit { &node_b.node_type } else { &node_a.node_type } 
+            NodeType::Internal(node_a, node_b) => match br.next() {
+                Some(true) => &node_b.node_type,
+                Some(false) => &node_a.node_type,
+                None => break
+            }
         };
     }
+    println!("{:?},,{:?}", input.last().unwrap(), output.last().unwrap());
 
     output
 }

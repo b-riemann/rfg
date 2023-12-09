@@ -243,6 +243,7 @@ fn main() -> Result<()> {
 
             let freqs = count_freqs(input.clone());
             let tree = HuffmanNode::from_weights(freqs);
+            println!("{}", tree);
             tree.to_file(hufftree_file)?;
 
             let edict = tree.encoding_dictionary();
@@ -264,7 +265,8 @@ fn main() -> Result<()> {
             let filename = args.next().unwrap();
 
             let tree: HuffmanNode<u8> = HuffmanNode::from_file(hufftree_file)?;
-
+            println!("{}", tree);
+            
             let input = read(huffbin_file)?;
             let output = decode(&input, tree);
             write(filename, output)
