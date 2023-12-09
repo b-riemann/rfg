@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::cmp::Reverse;
 use std::io::{Result, ErrorKind, Error};
 use std::env;
+use std::path::Path;
 
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -122,10 +123,15 @@ fn used_from(unused_symbols: &[u8]) -> Vec<u8> {
     order_symbols(used)
 }
 
-fn read_u16(filename: String) -> Result<Vec<u16>> {
-    let contents = read(filename)?;
+fn read_u16<P>(path: P) -> Result<Vec<u16>> where P: AsRef<Path> {
+    let contents = read(path)?;
     let contents_u16: Vec<u16> = contents.chunks_exact(2).map(|bytes| u16::from_le_bytes([bytes[0],bytes[1]])).collect();
     Ok(contents_u16)
+}
+
+fn write_u16<P>(path: P, contents: Vec<u16>) -> Result<()> where P: AsRef<Path> {
+    let contents_u8: Vec<u8> = contents.into_iter().flat_map(|b| b.to_le_bytes()).collect();
+    write(path, contents_u8)
 }
 
 fn main() -> Result<()> {
@@ -243,7 +249,7 @@ fn main() -> Result<()> {
             let out = encode(input, &tree);
             write(huffbin_file, out)
         }
-        "huffencode16" => {
+        "huffencode16<-" => {
             let filename = args.next().unwrap();
             let contents = read_u16(filename)?;
             let input = contents.into_iter();
@@ -266,13 +272,15 @@ fn main() -> Result<()> {
             let output = decode(&input, tree);
             write(filename, output)
         }
-        "test:huffdecode16bit" => {
-            let tree: HuffmanNode<u16> = HuffmanNode::from_file("tree.test")?;
+        "huffdecode16->" => {
+            let filename = args.next().unwrap();
 
-            let encoded = vec![151,87,60];
-            let decoded = decode(&encoded, tree);
-            println!("decoded {:?}", decoded);
-            Ok(())
+            let tree: HuffmanNode<u16> = HuffmanNode::from_file(hufftree_file)?;
+            println!("{}", tree);
+            
+            let input = read(huffbin_file)?;
+            let output = decode(&input, tree);
+            write_u16(filename, output)
         }
         "rldecode->" => {
             let filename = args.next().unwrap();
