@@ -5,6 +5,8 @@ use bit_vec::BitVec;
 use bitstream::{BitReader, BitWriter, Padding, LengthPadding};
 use std::path::Path;
 use std::fs::File;
+#[cfg(test)]
+use std::io::Cursor;
 
 enum NodeType<X> {
     Internal (Box<HuffmanNode<X>>, Box<HuffmanNode<X>>),
@@ -18,17 +20,17 @@ pub struct HuffmanNode<X> {
 
 type EncodeDict<X> = HashMap<X, BitVec>;
 
-fn gen_entries<X>(node: HuffmanNode<X>, prefix: BitVec) -> EncodeDict<X> where X: Eq, X: Hash {
+fn gen_entries<X>(node: &HuffmanNode<X>, prefix: BitVec) -> EncodeDict<X> where X: Eq, X: Hash, X: Clone {
     let mut dic: EncodeDict<X> = HashMap::new();
-    match node.node_type {
-        NodeType::Leaf(sym) => { dic.insert(sym, prefix); dic }
+    match &node.node_type {
+        NodeType::Leaf(sym) => { dic.insert(sym.clone(), prefix); dic }
         NodeType::Internal(node_a, node_b) => {
             let mut prefix_a = prefix.clone();
             prefix_a.push(false);
-            dic.extend( gen_entries(*node_a, prefix_a) );
+            dic.extend( gen_entries(&*node_a, prefix_a) );
             let mut prefix_b = prefix.clone();
             prefix_b.push(true);
-            dic.extend( gen_entries(*node_b, prefix_b) );
+            dic.extend( gen_entries(&*node_b, prefix_b) );
             dic
         }
     }
@@ -83,7 +85,7 @@ impl<X> HuffmanNode<X> {
         }
     }
 
-    pub fn encoding_dictionary(self) -> EncodeDict<X> where X: Eq, X: Hash {
+    pub fn encoding_dictionary(&self) -> EncodeDict<X> where X: Eq, X: Hash, X: Clone {
         gen_entries(self, BitVec::new())
     }
 
@@ -183,11 +185,11 @@ pub fn count_freqs<I>(input: I) -> HashMap<I::Item, usize> where I: Iterator, I:
     counters
 }
 
-pub fn encode<I>(input: I, dic: EncodeDict<I::Item>) -> Vec<u8> where I: Iterator, I::Item: Eq, I::Item: PartialEq, I::Item: Hash, I::Item: std::fmt::Debug, I: Clone {
+pub fn encode<I>(input: I, edict: EncodeDict<I::Item>) -> Vec<u8> where I: Iterator, I::Item: Eq, I::Item: PartialEq, I::Item: Hash, I::Item: std::fmt::Debug, I: Clone {
     let mut encoded: Vec<u8> = Vec::new();
     let mut bw = BitWriter::with_padding(&mut encoded, LengthPadding::new());
     for symbol in input.clone() {
-        let code = dic.get(&symbol).expect("symbol should be in dictionary");
+        let code = edict.get(&symbol).expect("symbol should be in dictionary");
         for bit in code {
             bw.write_bit(bit).unwrap();
         }
@@ -232,7 +234,38 @@ pub fn decode<X>(input: &[u8], root_node: HuffmanNode<X>) -> Vec<X> where X: Cop
             }
         };
     }
-    println!("{:?},,{:?}", input.last().unwrap(), output.last().unwrap());
 
     output
+}
+
+#[test]
+fn tree_writevec_readvec() {
+    let input: Vec<u16> = vec![3,1,4,1,5,9];
+    let freqs = count_freqs(input.into_iter());
+    let tree_a = HuffmanNode::from_weights(freqs);
+
+    let bitv = tree_a.to_bits().to_bytes();
+
+    let mut br = BitReader::new(Cursor::new(bitv));
+    let x: (HuffmanNode<u16>, &mut BitReader<Cursor<Vec<u8>>, bitstream::NoPadding>) = HuffmanNode::from_bits(&mut br).unwrap();
+    let tree_b = x.0;
+
+    let str_a = format!("{}", tree_a);
+    let str_b = format!("{}", tree_b);
+    assert_eq!(str_a, str_b);
+}
+
+#[test]
+fn encode_decode() {
+    let input_vec: Vec<u16> = vec![3,1,4,1,5,9];
+    let input = input_vec.clone().into_iter();
+    let freqs = count_freqs(input.clone());
+    let tree = HuffmanNode::from_weights(freqs);
+
+    let edict = tree.encoding_dictionary();
+    
+    let compressed = encode(input, edict);
+
+    let output_vec = decode(&compressed, tree);
+    assert_eq!(input_vec, output_vec);
 }
