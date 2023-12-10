@@ -140,9 +140,9 @@ fn main() -> Result<()> {
     const USED_FILE: &str = "used.u8";
     let prepd_file = "out/enwik.prepd";
     let probcodes_file = "out/probcodes.u8";
-    let probcodes_file_d = "out/probcodes.u8.decompressed";
-    let rle_file = "out/rle.u8";
-    let rle_file_d = "out/rle.u8.decompressed";
+    let probcodes_file_d = "out/probcodes.u8.d";
+    let rle_file = "out/rle.u16";
+    let rle_file_d = "out/rle.u16.d";
     let hufftree_file = "out/huffcodes.tree";
     let huffbin_file = "out/huffcodes.bin";
 
@@ -164,8 +164,8 @@ fn main() -> Result<()> {
 
             let unused = read(UNUSED_FILE)?;
 
-            let xml_end = unused[0];
-            let big_char = unused[1];
+            let xml_end = unused[0]; // used for v1
+            let big_char = unused[1]; //used for v1+v2
 
             let mut out: Vec<u8> = Vec::with_capacity(max_len);
             let mut n = 0;
@@ -205,9 +205,8 @@ fn main() -> Result<()> {
             let probcodes = prob_encode(&prepd);
             write(probcodes_file, probcodes)
         }
-        "defunct:rlencode<-" => {
-            let filename = args.next().unwrap(); 
-  
+        "rlencode<-" => {
+            let filename = args.next().unwrap();
             let mut content = read(filename)?.into_iter();
 
             let mut rle_pairs: Vec<(u8,u8)> = Vec::new();
@@ -231,22 +230,24 @@ fn main() -> Result<()> {
                 }
             }
 
-            if nullcounter != 0 { // flush the nulls
-                rle_pairs.push( (last_nn, nullcounter) );
-            }
+            rle_pairs.push( (last_nn, nullcounter) ); //flush
 
             let rle_encoded: Vec<u8> = rle_pairs.into_iter().flat_map(|x| [x.0, x.1]).collect();
             write(rle_file, rle_encoded)
         }
         "entropy<-" => {
             let filename = args.next().unwrap();
-            let input = read(filename)?;
-
-            let freqs = count_freqs(input.into_iter());
-            entropy_info(freqs);
+            let input = read(filename)?.into_iter();
+            entropy_info(count_freqs(input));
             Ok(())
         }
-        "huffencode<-" => {
+        "entropy16<-" => {
+            let filename = args.next().unwrap();
+            let input = read_u16(filename)?.into_iter();
+            entropy_info(count_freqs(input));
+            Ok(())
+        }        
+        "huffencode8<-" => {
             let filename = args.next().unwrap();
             let contents = read(filename)?;
             let input = contents.into_iter();
@@ -272,7 +273,7 @@ fn main() -> Result<()> {
             let out = encode(input, &tree);
             write(huffbin_file, out)
         }
-        "huffdecode->" => {
+        "huffdecode8->" => {
             let filename = args.next().unwrap();
 
             let tree: HuffmanNode<u8> = HuffmanNode::from_file(hufftree_file)?;
@@ -292,19 +293,16 @@ fn main() -> Result<()> {
             let output = decode(&input, tree);
             write_u16(filename, output)
         }
-        "defunct:rldecode->" => {
+        "rldecode->" => {
             let filename = args.next().unwrap();
-
-            let offset = read(USED_FILE)?.len() as u8 - 1;
             let rle = read(rle_file_d)?;
+            let rle_pairs = rle.chunks_exact(2);
+
             let mut contents = Vec::new();
-            for ch in rle {
-                if ch > offset {
-                    let mut nulls = vec![0u8; (ch-offset) as usize];
-                    contents.append(&mut nulls);
-                } else {
-                    contents.push(ch);
-                }
+            for ch in rle_pairs {
+                contents.push(ch[0]);
+                let nulls = vec![0u8; ch[1] as usize];
+                contents.extend(nulls);
             }
             write(filename, contents)
         }
