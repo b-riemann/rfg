@@ -163,7 +163,6 @@ fn main() -> Result<()> {
             file.truncate(max_len);
 
             let unused = read(UNUSED_FILE)?;
-
             let xml_end = unused[0]; // used for v1
             let big_char = unused[1]; //used for v1+v2
 
@@ -312,6 +311,34 @@ fn main() -> Result<()> {
             let probcodes = read(probcodes_file_d)?;
             let prepd = prob_decode(&probcodes);
             write(filename, prepd)
+        }
+        "unprep_incomplete->" => {
+            let filename = args.next().unwrap();
+
+            let mut prepd = read(prepd_file.to_owned()+".d")?;
+            prepd.reverse(); 
+            
+            let unused = read(UNUSED_FILE)?;
+            //let xml_end = unused[0]; // used for v1
+            let big_char = unused[1]; //used for v1+v2
+
+            let mut out: Vec<u8> = Vec::with_capacity(prepd.len());
+
+            let mut n = 0;
+            loop {
+                let ch = prepd[n];
+
+                let to_push =
+                if ch == big_char {
+                    n += 1; prepd[n]-32 //.to_uppercase
+                } else {
+                    ch
+                }; 
+                out.push(to_push);
+                n += 1;
+                if n>=prepd.len() { break; }
+            }
+            write(filename, out)
         }
         x => Err( Error::new(ErrorKind::NotFound, format!("unknown mode {x}")) )
     }
