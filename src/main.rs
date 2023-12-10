@@ -149,7 +149,6 @@ fn main() -> Result<()> {
     let mut args = env::args();
     args.next();
 
-    // the order of possible modes corresponds to one compression->decompression cycle (with entropy diagnosis in between)
     match args.next().unwrap().as_str() {
         "unused<-enwik"=> {
             let file = read(ENWIK9)?;
@@ -160,18 +159,44 @@ fn main() -> Result<()> {
         }
         "prepd<-enwik" => {
             let max_len = usize::from_str_radix(&args.next().unwrap(), 10).unwrap();
-
-            let used = read(USED_FILE)?;
-            let mut usedix = [0u8; 256];
-            for (n, ch) in used.into_iter().enumerate() {
-                usedix[ch as usize] = n as u8;
-            }
-
             let mut file = read(ENWIK9)?;
             file.truncate(max_len);
-            file.reverse();
-            let prepd : Vec<u8> = file.into_iter().map(|x| usedix[x as usize]).collect();
-            write(prepd_file, &prepd)
+
+            let unused = read(UNUSED_FILE)?;
+
+            let xml_end = unused[0];
+            let big_char = unused[1];
+
+            let mut out: Vec<u8> = Vec::with_capacity(max_len);
+            let mut n = 0;
+            loop {
+                let ch = file[n];
+                let to_push = match ch {
+                    b'<' => {
+                        if file[n+1] != b'/' {
+                            ch
+                        } else {
+                            n += 2;
+                            while file[n] != b'>' {
+                                n += 1;
+                            }
+                            xml_end
+                        }
+                    }
+                    65..=90 => {
+                        out.push(big_char);
+                        ch+32 //.to_lowercase
+                    }
+                    _ => ch
+                };
+                out.push( to_push );
+
+                n += 1;
+                if n>=max_len { break; }
+            }
+
+            out.reverse();
+            write(prepd_file, &out)
         }
         "probencode<-" => {
             let prepd_filename = args.next().unwrap();
@@ -180,7 +205,7 @@ fn main() -> Result<()> {
             let probcodes = prob_encode(&prepd);
             write(probcodes_file, probcodes)
         }
-        "rlencode<-" => {
+        "defunct:rlencode<-" => {
             let filename = args.next().unwrap();
 
             //available unused bytecode range for RLE encosing is offset..=255u8
@@ -235,7 +260,7 @@ fn main() -> Result<()> {
             let out = encode(input, &tree);
             write(huffbin_file, out)
         }
-        "demo:huffencode16<-" => {
+        "huffencode16<-" => {
             let filename = args.next().unwrap();
             let contents = read_u16(filename)?;
             let input = contents.into_iter();
@@ -258,7 +283,7 @@ fn main() -> Result<()> {
             let output = decode(&input, tree);
             write(filename, output)
         }
-        "demo:huffdecode16->" => {
+        "huffdecode16->" => {
             let filename = args.next().unwrap();
 
             let tree: HuffmanNode<u16> = HuffmanNode::from_file(hufftree_file)?;
