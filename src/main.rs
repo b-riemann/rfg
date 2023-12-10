@@ -312,25 +312,46 @@ fn main() -> Result<()> {
             let prepd = prob_decode(&probcodes);
             write(filename, prepd)
         }
-        "unprep_incomplete->" => {
+        "unprep->" => {
             let filename = args.next().unwrap();
 
             let mut prepd = read(prepd_file.to_owned()+".d")?;
             prepd.reverse(); 
             
             let unused = read(UNUSED_FILE)?;
-            //let xml_end = unused[0]; // used for v1
+            let xml_end = unused[0]; // used for v1
             let big_char = unused[1]; //used for v1+v2
 
             let mut out: Vec<u8> = Vec::with_capacity(prepd.len());
 
+            let mut xml_tags: Vec<Vec<u8>> = Vec::new();
             let mut n = 0;
             loop {
                 let ch = prepd[n];
+                match ch {
+                    b'<' => {
+                        let a = n + 1;
+                        let mut b = a + 1;
+                        let mut c = 0;
+                        while prepd[b] != b'>' {
+                            if c==0 && prepd[b] == b' ' { c = b; }
+                            b += 1;
+                        }
+                        if prepd[b-1] != b'/' {
+                            if c != 0 { b = c; }
+                            xml_tags.push( prepd[a..b].to_vec() );
+                        }
+                    }
+                    _ => ()
+                }
 
                 let to_push =
                 if ch == big_char {
                     n += 1; prepd[n]-32 //.to_uppercase
+                } else if ch == xml_end {
+                    out.extend(b"</");
+                    out.extend( xml_tags.pop().unwrap() );
+                    b'>'
                 } else {
                     ch
                 }; 
