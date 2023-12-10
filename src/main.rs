@@ -206,37 +206,36 @@ fn main() -> Result<()> {
             write(probcodes_file, probcodes)
         }
         "defunct:rlencode<-" => {
-            let filename = args.next().unwrap();
-
-            //available unused bytecode range for RLE encosing is offset..=255u8
-            //the null values to run-length encode range from 1..maxcount
-            let offset = read(USED_FILE)?.len() as u8 - 1;
-            let maxcount = 255u8-offset-1; 
+            let filename = args.next().unwrap(); 
   
-            let content = read(filename)?;
-            let mut rle_encoded = Vec::new();
+            let mut content = read(filename)?.into_iter();
 
+            let mut rle_pairs: Vec<(u8,u8)> = Vec::new();
+
+            let mut last_nn: u8 = content.next().unwrap();
             let mut nullcounter = 0u8;
-            for ch in content {
+
+            while let Some(ch) = content.next() {
                 if ch==0 {
-                    if nullcounter > maxcount {
-                        rle_encoded.push(offset+nullcounter);
-                        nullcounter = 1;
+                    if nullcounter == 255u8 {
+                        rle_pairs.push( (last_nn, nullcounter) );
+                        last_nn = 0u8;
+                        nullcounter = 0;
                     } else {
                         nullcounter += 1;
                     }
-                } else if nullcounter != 0 {
-                    rle_encoded.push(offset+nullcounter);
+                } else  {
+                    rle_pairs.push( (last_nn, nullcounter) );
                     nullcounter = 0;
-                    rle_encoded.push(ch)
-                } else {
-                    rle_encoded.push(ch);
+                    last_nn = ch;
                 }
             }
 
             if nullcounter != 0 { // flush the nulls
-                rle_encoded.push(offset+nullcounter);
+                rle_pairs.push( (last_nn, nullcounter) );
             }
+
+            let rle_encoded: Vec<u8> = rle_pairs.into_iter().flat_map(|x| [x.0, x.1]).collect();
             write(rle_file, rle_encoded)
         }
         "entropy<-" => {
@@ -293,7 +292,7 @@ fn main() -> Result<()> {
             let output = decode(&input, tree);
             write_u16(filename, output)
         }
-        "rldecode->" => {
+        "defunct:rldecode->" => {
             let filename = args.next().unwrap();
 
             let offset = read(USED_FILE)?.len() as u8 - 1;
