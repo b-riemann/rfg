@@ -140,16 +140,15 @@ fn main() -> Result<()> {
     const USED_FILE: &str = "used.u8";
     let prepd_file = "out/enwik.prepd";
     let probcodes_file = "out/probcodes.u8";
-    let probcodes_file_d = "out/probcodes.u8.decompressed";
-    let rle_file = "out/rle.u8";
-    let rle_file_d = "out/rle.u8.decompressed";
+    let probcodes_file_d = "out/probcodes.u8.d";
+    let rle_file = "out/rle.u16";
+    let rle_file_d = "out/rle.u16.d";
     let hufftree_file = "out/huffcodes.tree";
     let huffbin_file = "out/huffcodes.bin";
 
     let mut args = env::args();
     args.next();
 
-    // the order of possible modes corresponds to one compression->decompression cycle (with entropy diagnosis in between)
     match args.next().unwrap().as_str() {
         "unused<-enwik"=> {
             let file = read(ENWIK9)?;
@@ -160,18 +159,43 @@ fn main() -> Result<()> {
         }
         "prepd<-enwik" => {
             let max_len = usize::from_str_radix(&args.next().unwrap(), 10).unwrap();
-
-            let used = read(USED_FILE)?;
-            let mut usedix = [0u8; 256];
-            for (n, ch) in used.into_iter().enumerate() {
-                usedix[ch as usize] = n as u8;
-            }
-
             let mut file = read(ENWIK9)?;
             file.truncate(max_len);
-            file.reverse();
-            let prepd : Vec<u8> = file.into_iter().map(|x| usedix[x as usize]).collect();
-            write(prepd_file, &prepd)
+
+            let unused = read(UNUSED_FILE)?;
+            let xml_end = unused[0]; // used for v1
+            let big_char = unused[1]; //used for v1+v2
+
+            let mut out: Vec<u8> = Vec::with_capacity(max_len);
+            let mut n = 0;
+            loop {
+                let ch = file[n];
+                let to_push = match ch {
+                    b'<' => {
+                        if file[n+1] != b'/' {
+                            ch
+                        } else {
+                            n += 2;
+                            while file[n] != b'>' {
+                                n += 1;
+                            }
+                            xml_end
+                        }
+                    }
+                    65..=90 => {
+                        out.push(big_char);
+                        ch+32 //.to_lowercase
+                    }
+                    _ => ch
+                };
+                out.push( to_push );
+
+                n += 1;
+                if n>=max_len { break; }
+            }
+
+            out.reverse();
+            write(prepd_file, &out)
         }
         "probencode<-" => {
             let prepd_filename = args.next().unwrap();
@@ -182,47 +206,47 @@ fn main() -> Result<()> {
         }
         "rlencode<-" => {
             let filename = args.next().unwrap();
+            let mut content = read(filename)?.into_iter();
 
-            //available unused bytecode range for RLE encosing is offset..=255u8
-            //the null values to run-length encode range from 1..maxcount
-            let offset = read(USED_FILE)?.len() as u8 - 1;
-            let maxcount = 255u8-offset-1; 
-  
-            let content = read(filename)?;
-            let mut rle_encoded = Vec::new();
+            let mut rle_pairs: Vec<(u8,u8)> = Vec::new();
 
+            let mut last_nn: u8 = content.next().unwrap();
             let mut nullcounter = 0u8;
-            for ch in content {
+
+            while let Some(ch) = content.next() {
                 if ch==0 {
-                    if nullcounter > maxcount {
-                        rle_encoded.push(offset+nullcounter);
-                        nullcounter = 1;
+                    if nullcounter == 255u8 {
+                        rle_pairs.push( (last_nn, nullcounter) );
+                        last_nn = 0u8;
+                        nullcounter = 0;
                     } else {
                         nullcounter += 1;
                     }
-                } else if nullcounter != 0 {
-                    rle_encoded.push(offset+nullcounter);
+                } else  {
+                    rle_pairs.push( (last_nn, nullcounter) );
                     nullcounter = 0;
-                    rle_encoded.push(ch)
-                } else {
-                    rle_encoded.push(ch);
+                    last_nn = ch;
                 }
             }
 
-            if nullcounter != 0 { // flush the nulls
-                rle_encoded.push(offset+nullcounter);
-            }
+            rle_pairs.push( (last_nn, nullcounter) ); //flush
+
+            let rle_encoded: Vec<u8> = rle_pairs.into_iter().flat_map(|x| [x.0, x.1]).collect();
             write(rle_file, rle_encoded)
         }
         "entropy<-" => {
             let filename = args.next().unwrap();
-            let input = read(filename)?;
-
-            let freqs = count_freqs(input.into_iter());
-            entropy_info(freqs);
+            let input = read(filename)?.into_iter();
+            entropy_info(count_freqs(input));
             Ok(())
         }
-        "huffencode<-" => {
+        "entropy16<-" => {
+            let filename = args.next().unwrap();
+            let input = read_u16(filename)?.into_iter();
+            entropy_info(count_freqs(input));
+            Ok(())
+        }        
+        "huffencode8<-" => {
             let filename = args.next().unwrap();
             let contents = read(filename)?;
             let input = contents.into_iter();
@@ -235,7 +259,7 @@ fn main() -> Result<()> {
             let out = encode(input, &tree);
             write(huffbin_file, out)
         }
-        "demo:huffencode16<-" => {
+        "huffencode16<-" => {
             let filename = args.next().unwrap();
             let contents = read_u16(filename)?;
             let input = contents.into_iter();
@@ -248,7 +272,7 @@ fn main() -> Result<()> {
             let out = encode(input, &tree);
             write(huffbin_file, out)
         }
-        "huffdecode->" => {
+        "huffdecode8->" => {
             let filename = args.next().unwrap();
 
             let tree: HuffmanNode<u8> = HuffmanNode::from_file(hufftree_file)?;
@@ -258,7 +282,7 @@ fn main() -> Result<()> {
             let output = decode(&input, tree);
             write(filename, output)
         }
-        "demo:huffdecode16->" => {
+        "huffdecode16->" => {
             let filename = args.next().unwrap();
 
             let tree: HuffmanNode<u16> = HuffmanNode::from_file(hufftree_file)?;
@@ -270,17 +294,14 @@ fn main() -> Result<()> {
         }
         "rldecode->" => {
             let filename = args.next().unwrap();
-
-            let offset = read(USED_FILE)?.len() as u8 - 1;
             let rle = read(rle_file_d)?;
+            let rle_pairs = rle.chunks_exact(2);
+
             let mut contents = Vec::new();
-            for ch in rle {
-                if ch > offset {
-                    let mut nulls = vec![0u8; (ch-offset) as usize];
-                    contents.append(&mut nulls);
-                } else {
-                    contents.push(ch);
-                }
+            for ch in rle_pairs {
+                contents.push(ch[0]);
+                let nulls = vec![0u8; ch[1] as usize];
+                contents.extend(nulls);
             }
             write(filename, contents)
         }
@@ -290,6 +311,55 @@ fn main() -> Result<()> {
             let probcodes = read(probcodes_file_d)?;
             let prepd = prob_decode(&probcodes);
             write(filename, prepd)
+        }
+        "unprep->" => {
+            let filename = args.next().unwrap();
+
+            let mut prepd = read(prepd_file.to_owned()+".d")?;
+            prepd.reverse(); 
+            
+            let unused = read(UNUSED_FILE)?;
+            let xml_end = unused[0]; // used for v1
+            let big_char = unused[1]; //used for v1+v2
+
+            let mut out: Vec<u8> = Vec::with_capacity(prepd.len());
+
+            let mut xml_tags: Vec<Vec<u8>> = Vec::new();
+            let mut n = 0;
+            loop {
+                let ch = prepd[n];
+                match ch {
+                    b'<' => {
+                        let a = n + 1;
+                        let mut b = a + 1;
+                        let mut c = 0;
+                        while prepd[b] != b'>' {
+                            if c==0 && prepd[b] == b' ' { c = b; }
+                            b += 1;
+                        }
+                        if prepd[b-1] != b'/' {
+                            if c != 0 { b = c; }
+                            xml_tags.push( prepd[a..b].to_vec() );
+                        }
+                    }
+                    _ => ()
+                }
+
+                let to_push =
+                if ch == big_char {
+                    n += 1; prepd[n]-32 //.to_uppercase
+                } else if ch == xml_end {
+                    out.extend(b"</");
+                    out.extend( xml_tags.pop().unwrap() );
+                    b'>'
+                } else {
+                    ch
+                }; 
+                out.push(to_push);
+                n += 1;
+                if n>=prepd.len() { break; }
+            }
+            write(filename, out)
         }
         x => Err( Error::new(ErrorKind::NotFound, format!("unknown mode {x}")) )
     }
