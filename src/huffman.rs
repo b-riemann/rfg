@@ -204,6 +204,18 @@ pub fn count_freqs<I>(input: I) -> HashMap<I::Item, usize> where I: Iterator, I:
     counters
 }
 
+pub fn entropy_info<X>(counters: HashMap<X, usize>) where X: SerializedBits {
+    let freqs: Vec<usize> = counters.into_iter().map(|f| f.1).filter(|&f| f!=0).collect();
+    let total: usize = freqs.clone().into_iter().sum();
+    let totalf = total as f64;
+    let logprobs = freqs.into_iter().map(|f| { let p = (f as f64) / totalf; -p*p.log2() });
+    let entropy_symbol: f64 = logprobs.sum();
+    let ratio = entropy_symbol / (X::bitlen() as f64);
+    println!("entropy ~ {:.4} bits / symbol, min.ratio ~ {:.4}", entropy_symbol, ratio);
+    let limit = totalf*ratio;
+    println!("total input = {} symbols, limit ~ {:.1} symbols or {:.1} bytes", total, limit, limit*(X::bitlen() as f64)/8.0);
+}
+
 fn get_internals<X>(root_node: HuffmanNode<X>) -> (HuffmanNode<X>, HuffmanNode<X>) {
     match root_node.node_type {
         NodeType::Internal(node_a, node_b) => (*node_a, *node_b),

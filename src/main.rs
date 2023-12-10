@@ -9,7 +9,7 @@ use std::path::Path;
 use indicatif::{ProgressBar, ProgressStyle};
 
 mod huffman;
-use huffman::{count_freqs, encode, decode, HuffmanNode};
+use huffman::{count_freqs, entropy_info, encode, decode, HuffmanNode};
 
 fn bar(total_size: u64) -> ProgressBar { //from indicatif example "download.rs"
     let pb = ProgressBar::new(total_size);
@@ -216,24 +216,10 @@ fn main() -> Result<()> {
         }
         "entropy<-" => {
             let filename = args.next().unwrap();
-            let content = read(filename).unwrap();
-            let clen = content.len();
-            let mut slots = [0u32; 256];
-            for n in content {
-                slots[n as usize] += 1;
-            }
-            println!("slots: {:?} {:?} {:?} {:?} ...", slots[0], slots[1], slots[2], slots[3]);
-            let mut entropy = 0.0;
-            let su: u32 = slots.iter().sum();
-            let sm = su as f64;
-            for s in slots.iter().filter(|&x| *x!=0) {
-                let p = (*s as f64) / sm;
-                entropy -= p * p.log2();
-            }
+            let input = read(filename)?;
 
-            println!("entropy = {:.4} bits/byte", entropy);
-            println!("orig_len = {} bytes", clen);
-            println!("entropy*orig_len = {:.1} bytes", (entropy*clen as f64/8.0));
+            let freqs = count_freqs(input.into_iter());
+            entropy_info(freqs);
             Ok(())
         }
         "huffencode<-" => {
@@ -249,7 +235,7 @@ fn main() -> Result<()> {
             let out = encode(input, &tree);
             write(huffbin_file, out)
         }
-        "huffencode16<-" => {
+        "demo:huffencode16<-" => {
             let filename = args.next().unwrap();
             let contents = read_u16(filename)?;
             let input = contents.into_iter();
@@ -272,7 +258,7 @@ fn main() -> Result<()> {
             let output = decode(&input, tree);
             write(filename, output)
         }
-        "huffdecode16->" => {
+        "demo:huffdecode16->" => {
             let filename = args.next().unwrap();
 
             let tree: HuffmanNode<u16> = HuffmanNode::from_file(hufftree_file)?;
