@@ -8,7 +8,7 @@ mod huffman;
 use huffman::{count_freqs, entropy_info, encode, decode, HuffmanNode};
 
 mod prob;
-use prob::{encode as prob_encode, decode as prob_decode};
+use prob::{encode as prob_encode, decode as prob_decode, encode_decode as prob_encode_decode};
 
 mod prep;
 use prep::{prepare, unprepare, unused_symbols};
@@ -181,6 +181,7 @@ fn main() -> Result<()> {
 
             write(filename, out)
         }
+        "playground" => Ok(prob_encode_decode()),
         x => Err( Error::new(ErrorKind::NotFound, format!("unknown mode {x}")) )
     }
 }
