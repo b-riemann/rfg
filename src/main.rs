@@ -1,5 +1,4 @@
 use std::fs::{read,write};
-use std::collections::HashSet;
 
 use std::io::{Result, ErrorKind, Error};
 use std::env;
@@ -11,27 +10,8 @@ use huffman::{count_freqs, entropy_info, encode, decode, HuffmanNode};
 mod prob;
 use prob::{encode as prob_encode, decode as prob_decode};
 
-fn order_symbols(symbols: HashSet<u8>) -> Vec<u8> {
-    let mut s : Vec<u8> = symbols.into_iter().collect();
-    s.sort_by(|a,b| a.cmp(b));
-    s
-}
-
-fn unused_symbols(content: &[u8]) -> Vec<u8> {
-    let mut symbols: HashSet<u8> = HashSet::from_iter(0..=255u8);
-    for ch in content {
-        symbols.remove(&ch);
-    }
-    order_symbols(symbols)
-}
-
-fn used_from(unused_symbols: &[u8]) -> Vec<u8> {
-    let mut used: HashSet<u8> = HashSet::from_iter(0..=255u8);
-    for ch in unused_symbols {
-        used.remove(&ch);
-    }
-    order_symbols(used)
-}
+mod prep;
+use prep::{prepare, unprepare, unused_symbols};
 
 fn read_u16<P>(path: P) -> Result<Vec<u16>> where P: AsRef<Path> {
     let contents = read(path)?;
@@ -47,7 +27,6 @@ fn write_u16<P>(path: P, contents: Vec<u16>) -> Result<()> where P: AsRef<Path> 
 fn main() -> Result<()> {
     const ENWIK9: &str = "../enwik9";
     const UNUSED_FILE: &str = "unused.u8";
-    const USED_FILE: &str = "used.u8";
     let prepd_file = "out/enwik.prepd";
     let probcodes_file = "out/probcodes.u8";
     let probcodes_file_d = "out/probcodes.u8.d";
@@ -63,48 +42,17 @@ fn main() -> Result<()> {
         "unused<-enwik"=> {
             let file = read(ENWIK9)?;
             let unused = unused_symbols(&file);
-            let used = used_from(&unused);
-            write(UNUSED_FILE, unused)?;
-            write(USED_FILE, used)
+            write(UNUSED_FILE, unused)
         }
         "prepd<-enwik" => {
             let max_len = usize::from_str_radix(&args.next().unwrap(), 10).unwrap();
-            let mut file = read(ENWIK9)?;
-            file.truncate(max_len);
+            let mut input = read(ENWIK9)?;
+            input.truncate(max_len);
 
             let unused = read(UNUSED_FILE)?;
-            let xml_end = unused[0]; // used for v1
-            let big_char = unused[1]; //used for v1+v2
-
-            let mut out: Vec<u8> = Vec::with_capacity(max_len);
-            let mut n = 0;
-            loop {
-                let ch = file[n];
-                let to_push = match ch {
-                    b'<' => {
-                        if file[n+1] != b'/' {
-                            ch
-                        } else {
-                            n += 2;
-                            while file[n] != b'>' {
-                                n += 1;
-                            }
-                            xml_end
-                        }
-                    }
-                    65..=90 => {
-                        out.push(big_char);
-                        ch+32 //.to_lowercase
-                    }
-                    _ => ch
-                };
-                out.push( to_push );
-
-                n += 1;
-                if n>=max_len { break; }
-            }
-
+            let mut out = prepare(&input, &unused);
             out.reverse();
+
             write(prepd_file, &out)
         }
         "probencode<-" => {
@@ -225,50 +173,12 @@ fn main() -> Result<()> {
         "unprep->" => {
             let filename = args.next().unwrap();
 
-            let mut prepd = read(prepd_file.to_owned()+".d")?;
-            prepd.reverse(); 
+            let mut input = read(prepd_file.to_owned()+".d")?;
+            input.reverse(); 
             
             let unused = read(UNUSED_FILE)?;
-            let xml_end = unused[0]; // used for v1
-            let big_char = unused[1]; //used for v1+v2
+            let out = unprepare(&input, &unused);
 
-            let mut out: Vec<u8> = Vec::with_capacity(prepd.len());
-
-            let mut xml_tags: Vec<Vec<u8>> = Vec::new();
-            let mut n = 0;
-            loop {
-                let ch = prepd[n];
-                match ch {
-                    b'<' => {
-                        let a = n + 1;
-                        let mut b = a + 1;
-                        let mut c = 0;
-                        while prepd[b] != b'>' {
-                            if c==0 && prepd[b] == b' ' { c = b; }
-                            b += 1;
-                        }
-                        if prepd[b-1] != b'/' {
-                            if c != 0 { b = c; }
-                            xml_tags.push( prepd[a..b].to_vec() );
-                        }
-                    }
-                    _ => ()
-                }
-
-                let to_push =
-                if ch == big_char {
-                    n += 1; prepd[n]-32 //.to_uppercase
-                } else if ch == xml_end {
-                    out.extend(b"</");
-                    out.extend( xml_tags.pop().unwrap() );
-                    b'>'
-                } else {
-                    ch
-                }; 
-                out.push(to_push);
-                n += 1;
-                if n>=prepd.len() { break; }
-            }
             write(filename, out)
         }
         x => Err( Error::new(ErrorKind::NotFound, format!("unknown mode {x}")) )
