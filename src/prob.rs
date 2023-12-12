@@ -91,3 +91,14 @@ pub fn decode(probcodes: &[u8]) -> Vec<u8> {
     }
     reversed
 }
+
+#[test]
+fn encode_decode() {
+    let input = b"This is a simple text for encoding this and that information.".to_vec();
+    let mut reversed = input.clone();
+    reversed.reverse();
+    let encoded = encode(&reversed);
+    let mut output = decode(&encoded);
+    output.reverse();
+    assert_eq!(String::from_utf8_lossy(&input), String::from_utf8_lossy(&output))
+}

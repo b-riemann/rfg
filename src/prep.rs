@@ -100,7 +100,7 @@ pub fn unprepare(input: &[u8], control_chars: &[u8]) -> Vec<u8> {
 }
 
 #[test]
-pub fn prepare_unprepare() {
+fn prepare_unprepare() {
     let control_chars = vec![b'~', 1u8];
     let input = b"<one tag><another tag/>Hi<third tg 2start>this is a test for Basic xml tagging</third> and cApital Letter detection</one>".to_vec();
     let prepd = prepare(&input, &control_chars);
