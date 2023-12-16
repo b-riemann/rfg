@@ -122,7 +122,9 @@ pub fn encode_decode() {
     let mut reversed = input.clone();
     reversed.reverse();
     let encoded = encode(reversed);
+    let expected = "This i\0\0b sinple text!ior iocoeiog \u{5}h\0\0\0\u{1}ne!\u{1}\u{1}bt\u{1}\u{4}\u{2}g\0\0mb\u{2}ipo2";
+    assert_eq!(expected, String::from_utf8(encoded.clone()).unwrap());
     let mut output = decode(&encoded);
     output.reverse();
-    assert_eq!(String::from_utf8_lossy(&input), String::from_utf8_lossy(&output))
+    assert_eq!(String::from_utf8(input).unwrap(), String::from_utf8(output).unwrap())
 }
