@@ -59,7 +59,7 @@ fn main() -> Result<()> {
             let prepd_filename = args.next().unwrap();
 
             let prepd = read(prepd_filename).unwrap();
-            let probcodes = prob_encode(&prepd);
+            let probcodes = prob_encode(prepd);
             write(probcodes_file, probcodes)
         }
         "rlencode<-" => {
