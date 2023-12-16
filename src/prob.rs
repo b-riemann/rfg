@@ -27,7 +27,7 @@ impl RotundHelper {
         };
 
         for x in entries {
-            let a = x-n-1; //newa
+            let a = x-n-1;
             let mut overlap = 1;
             loop {
                 let b = overlap+1;
@@ -50,7 +50,6 @@ impl RotundHelper {
         }
 
         let mut keys : Vec<u8> = (0..=255u8).collect();
-        //keys.sort_by_key(|x| Reverse(&rotund_probs[*x as usize]));
         keys.sort_by_key(|&x| { let xi=x as usize; Reverse((rotund_overlap[xi] << 32) +(rotund_freq[xi] as usize)) });
         keys
     }
@@ -117,14 +116,12 @@ pub fn decode(probcodes: &[u8]) -> Vec<u8> {
     helper.reversed
 }
 
-//#[test]
+#[test]
 pub fn encode_decode() {
     let input = b"This is a simple text for encoding this and that information.".to_vec();
     let mut reversed = input.clone();
     reversed.reverse();
     let encoded = encode(reversed);
-    println!("{}", String::from_utf8_lossy(&input));
-    println!("{}", String::from_utf8_lossy(&encoded));
     let mut output = decode(&encoded);
     output.reverse();
     assert_eq!(String::from_utf8_lossy(&input), String::from_utf8_lossy(&output))
