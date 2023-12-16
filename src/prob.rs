@@ -27,16 +27,15 @@ impl RotundHelper {
         };
 
         for x in entries {
-            let a = x-n-1;
+            let xs = x-n;
             let mut overlap = 1;
             loop {
-                let b = overlap+1;
-                let c = a+b;
-                if (c >= clen) || (content[overlap] != content[c]) { break; }
-                overlap = b;
+                let xo = xs+overlap;
+                if xo >= clen || content[overlap] != content[xo] { break; }
+                overlap += 1;
             }
 
-            let target = content[a] as usize;
+            let target = content[xs-1] as usize;
 
             if rotund_overlap[target] > overlap {
                 continue
