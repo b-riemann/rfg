@@ -50,7 +50,10 @@ impl PrepState {
     }
 
     fn pop_xml_tag(&mut self) -> Vec<u8> {
-        self.xml_tags.pop().unwrap()
+        let mut out = b"</".to_vec();
+        out.extend( self.xml_tags.pop().unwrap() );
+        out.push(b'>');
+        out       
     }
 }
 
@@ -106,17 +109,14 @@ pub fn unprepare(input: &[u8], control_chars: &[u8]) -> Vec<u8> {
             _ => ()
         }
 
-        let to_push =
         if ch == big_char {
-            n += 1; input[n]-32 //.to_uppercase
+            n += 1;
+            out.push( input[n]-32 ); //.to_uppercase
         } else if ch == xml_end {
-            out.extend(b"</");
             out.extend( ps.pop_xml_tag() );
-            b'>'
         } else {
-            ch
+            out.push(ch);
         }; 
-        out.push(to_push);
         n += 1;
         if n>=input.len() { break; }
     }
