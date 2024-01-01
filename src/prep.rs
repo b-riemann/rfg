@@ -21,12 +21,13 @@ enum Tag {
 }
 
 struct PrepState {
-    xml_tags: Vec<Vec<u8>>
+    xml_tags: Vec<Vec<u8>>,
+    page_title: Vec<u8> //could be Option
 }
 
 impl PrepState {
     pub fn new() -> Self {
-        Self { xml_tags: Vec::new() }
+        Self { xml_tags: Vec::new(), page_title: Vec::new() }
     }
 
     fn fetch_xml_tag(&mut self, input: &[u8]) -> Option<Tag> {
@@ -45,6 +46,14 @@ impl PrepState {
         } else {
             if c != 0 { b = c; }
             self.xml_tags.push( input[1..b].to_vec() );
+            if self.xml_tags.last().unwrap() == b"title" {
+                b += 1;
+                c = b+1;
+                while input[c] != b'<' {
+                    c += 1;
+                }
+                self.page_title = input[b..c].to_vec();
+            };
             Some(Tag::Opening)
         }
     }
