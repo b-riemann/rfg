@@ -120,6 +120,8 @@ fn prepare_unprepare() {
     let control_chars = vec![b'~', 1u8];
     let input = b"<one tag><another tag/>Hi<third tg 2start>this is a test for Basic xml tagging</third> and cApital Letter detection</one>".to_vec();
     let prepd = prepare(&input, &control_chars);
+    let expected = "<one tag><another tag/>\u{1}hi<third tg 2start>this is a test for \u{1}basic xml tagging~ and c\u{1}apital \u{1}letter detection~";
+    assert_eq!(expected, String::from_utf8_lossy(&prepd));
     let output = unprepare(&prepd, &control_chars);
     //although assert_eq!(input,output) possible, the following gives better debug info:
     assert_eq!(String::from_utf8_lossy(&input), String::from_utf8_lossy(&output))
