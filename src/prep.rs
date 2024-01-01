@@ -17,7 +17,7 @@ pub fn unused_symbols(content: &[u8]) -> Vec<u8> {
 enum Tag {
     Opening,
     Closing(usize), //usize are symbol lengths
-    Solitary(usize)
+    Solitary
 }
 
 struct PrepState {
@@ -29,24 +29,23 @@ impl PrepState {
         Self { xml_tags: Vec::new() }
     }
 
-    fn fetch_xml_tag(&mut self, input: &[u8]) -> Tag {
+    fn fetch_xml_tag(&mut self, input: &[u8]) -> Option<Tag> {
         assert_eq!(input[0],b'<');
-
         let mut b=2;
         let mut c=0;
         while input[b] != b'>' {
             if c==0 && input[b] == b' ' { c = b; }
             b += 1;
-            if b>=input.len() { break; }
+            if b>=input.len() { return None }
         }
         if input[b-1] == b'/' {
-            Tag::Solitary(b)
+            Some(Tag::Solitary)
         } else if input[1] == b'/' {
-            Tag::Closing(b)
+            Some(Tag::Closing(b))
         } else {
             if c != 0 { b = c; }
             self.xml_tags.push( input[1..b].to_vec() );
-            Tag::Opening
+            Some(Tag::Opening)
         }
     }
 
@@ -68,7 +67,7 @@ pub fn prepare(input: &[u8], control_chars: &[u8]) -> Vec<u8> {
         let to_push = match ch {
             b'<' => {
                 match ps.fetch_xml_tag(&input[n..]) {
-                    Tag::Closing(x) => {
+                    Some(Tag::Closing(x)) => {
                         n += x;
                         xml_end
                     }
@@ -88,7 +87,6 @@ pub fn prepare(input: &[u8], control_chars: &[u8]) -> Vec<u8> {
     }
     out
 }
-
 
 
 pub fn unprepare(input: &[u8], control_chars: &[u8]) -> Vec<u8> {
