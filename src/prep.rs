@@ -22,7 +22,7 @@ enum Tag {
 
 struct PrepState {
     xml_tags: Vec<Vec<u8>>,
-    page_title: Vec<u8> //could be Option
+    page_title: Vec<u8>
 }
 
 impl PrepState {
@@ -64,11 +64,34 @@ impl PrepState {
         out.push(b'>');
         out       
     }
+
+    fn match_title(&self, input: &[u8], upper: bool) -> usize {
+        if self.page_title.is_empty() {
+            return 0
+        }
+        //returns overlap
+        if upper && self.page_title[0] != input[0] {
+            return 0
+        }
+        if !upper && self.page_title[0].to_ascii_lowercase() != input[0] {
+            return 0
+        }
+        if self.xml_tags.last().unwrap() == b"title" {
+            return 0 //don't replace title with itself..
+        }
+        for n in 1..self.page_title.len() {
+            if self.page_title[n] != input[n] {
+                return 0
+            }
+        }
+        self.page_title.len()-1
+    }
 }
 
 pub fn prepare(input: &[u8], control_chars: &[u8]) -> Vec<u8> {
     let xml_end = control_chars[0]; // used for v1
     let big_char = control_chars[1]; //used for v1+v2
+    let title_symbol = control_chars[2]; //used for v3
 
     let mut out: Vec<u8> = Vec::with_capacity(input.len());
 
@@ -88,9 +111,25 @@ pub fn prepare(input: &[u8], control_chars: &[u8]) -> Vec<u8> {
             }
             65..=90 => {
                 out.push(big_char);
-                ch+32 //.to_lowercase
+                match ps.match_title(&input[n..], true) {
+                    0 => {
+                        ch+32 //.to_lowercase
+                    }
+                    x => {
+                        n += x;
+                        title_symbol
+                    } 
+                }
             }
-            _ => ch
+            _ => {
+                match ps.match_title(&input[n..], false) {
+                    0 => ch,
+                    x => {
+                        n += x;
+                        title_symbol
+                    }
+                }
+            }
         };
         out.push( to_push );
 
@@ -134,10 +173,10 @@ pub fn unprepare(input: &[u8], control_chars: &[u8]) -> Vec<u8> {
 
 #[test]
 fn prepare_unprepare() {
-    let control_chars = vec![b'~', 1u8];
-    let input = b"<one tag><another tag/>Hi<third tg 2start>this is a test for Basic xml tagging</third> and cApital Letter detection</one>".to_vec();
+    let control_chars = vec![b'~', b'*', b'#'];
+    let input = b"<title>Parrot</title><one tag><another tag/>Hi<third tg 2start>this is a test for Basic xml tagging</third>, detecting small parrots and big Parrots, and cApital Letters.</one>".to_vec();
     let prepd = prepare(&input, &control_chars);
-    let expected = "<one tag><another tag/>\u{1}hi<third tg 2start>this is a test for \u{1}basic xml tagging~ and c\u{1}apital \u{1}letter detection~";
+    let expected = "<title>*parrot~<one tag><another tag/>*hi<third tg 2start>this is a test for *basic xml tagging~ and c*apital \u{1}letter detection~";
     assert_eq!(expected, String::from_utf8_lossy(&prepd));
     let output = unprepare(&prepd, &control_chars);
     //although assert_eq!(input,output) possible, the following gives better debug info:
