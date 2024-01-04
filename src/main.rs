@@ -3,6 +3,7 @@ use std::fs::{read,write};
 use std::io::{Result, ErrorKind, Error};
 use std::env;
 use std::path::Path;
+use std::collections::HashSet;
 
 mod huffman;
 use huffman::{count_freqs, entropy_info, encode, decode, HuffmanNode};
@@ -11,7 +12,7 @@ mod prob;
 use prob::{encode as prob_encode, decode as prob_decode};
 
 mod prep;
-use prep::{prepare, unprepare, unused_symbols};
+use prep::{prepare, unprepare};
 
 fn read_u16<P>(path: P) -> Result<Vec<u16>> where P: AsRef<Path> {
     let contents = read(path)?;
@@ -22,6 +23,21 @@ fn read_u16<P>(path: P) -> Result<Vec<u16>> where P: AsRef<Path> {
 fn write_u16<P>(path: P, contents: Vec<u16>) -> Result<()> where P: AsRef<Path> {
     let contents_u8: Vec<u8> = contents.into_iter().flat_map(|b| b.to_le_bytes()).collect();
     write(path, contents_u8)
+}
+
+
+fn order_symbols(symbols: HashSet<u8>) -> Vec<u8> {
+    let mut s : Vec<u8> = symbols.into_iter().collect();
+    s.sort_by(|a,b| a.cmp(b));
+    s
+}
+
+pub fn unused_symbols(content: &[u8]) -> Vec<u8> {
+    let mut symbols: HashSet<u8> = HashSet::from_iter(0..=255u8);
+    for ch in content {
+        symbols.remove(&ch);
+    }
+    order_symbols(symbols)
 }
 
 fn main() -> Result<()> {

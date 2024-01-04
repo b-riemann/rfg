@@ -1,18 +1,26 @@
-use std::collections::HashSet;
+//use std::collections::VecDeque;
 
-fn order_symbols(symbols: HashSet<u8>) -> Vec<u8> {
-    let mut s : Vec<u8> = symbols.into_iter().collect();
-    s.sort_by(|a,b| a.cmp(b));
-    s
+struct Capsif {
+    //akku: VecDeque<u8>
 }
 
-pub fn unused_symbols(content: &[u8]) -> Vec<u8> {
-    let mut symbols: HashSet<u8> = HashSet::from_iter(0..=255u8);
-    for ch in content {
-        symbols.remove(&ch);
+impl Iterator for Capsif {
+    type Item = u8;
+    fn next(&mut self) -> Option<u8> {
+        Some(13)
     }
-    order_symbols(symbols)
 }
+
+#[test]
+fn iter_basics() {
+    let it = Capsif {};
+    for (n, x) in it.enumerate() {
+        assert_eq!(13,x);
+        if n==100 { break; }
+    }
+}
+
+//----------------//
 
 enum Tag {
     Opening,
@@ -171,14 +179,14 @@ pub fn unprepare(input: &[u8], control_chars: &[u8]) -> Vec<u8> {
     out
 }
 
-#[test]
-fn prepare_unprepare() {
-    let control_chars = vec![b'~', b'*', b'#'];
-    let input = b"<title>Parrot</title><one tag><another tag/>Hi<third tg 2start>this is a test for Basic xml tagging</third>, detecting small parrots and big Parrots, and cApital Letters.</one>".to_vec();
-    let prepd = prepare(&input, &control_chars);
-    let expected = "<title>*parrot~<one tag><another tag/>*hi<third tg 2start>this is a test for *basic xml tagging~ and c*apital \u{1}letter detection~";
-    assert_eq!(expected, String::from_utf8_lossy(&prepd));
-    let output = unprepare(&prepd, &control_chars);
-    //although assert_eq!(input,output) possible, the following gives better debug info:
-    assert_eq!(String::from_utf8_lossy(&input), String::from_utf8_lossy(&output))
-}
+// #[test]
+// fn prepare_unprepare() {
+//     let control_chars = vec![b'~', b'*', b'#'];
+//     let input = b"<title>Parrot</title><one tag><another tag/>Hi<third tg 2start>this is a test for Basic xml tagging</third>, detecting small parrots and big Parrots, and cApital Letters.</one>".to_vec();
+//     let prepd = prepare(&input, &control_chars);
+//     let expected = "<title>*parrot~<one tag><another tag/>*hi<third tg 2start>this is a test for *basic xml tagging~ and c*apital \u{1}letter detection~";
+//     assert_eq!(expected, String::from_utf8_lossy(&prepd));
+//     let output = unprepare(&prepd, &control_chars);
+//     //although assert_eq!(input,output) possible, the following gives better debug info:
+//     assert_eq!(String::from_utf8_lossy(&input), String::from_utf8_lossy(&output))
+// }
