@@ -1,10 +1,18 @@
 struct Capsif<I> {
-    iter: I
+    iter: I,
+    cap_symbol: u8,
+    store: Option<u8>
 }
 
 impl<I> Capsif<I> {
-    pub fn new(iter: I) -> Self {
-        Self { iter }
+    #[cfg(test)]
+    pub fn new(iter: I, cap_symbol: u8) -> Self {
+        Self { iter, cap_symbol, store: None }
+    }
+    fn pop_stored(&mut self) -> Option<u8> {
+        let x = self.store;
+        self.store = None;
+        x
     }
 }
 
@@ -13,25 +21,29 @@ where I: Iterator<Item=u8>
 {
     type Item = u8;
     fn next(&mut self) -> Option<u8> {
-        match self.iter.next() {
-            Some(b) => Some(b),
-            _ => Some(13)
+        match self.store {
+            Some(_) => self.pop_stored(),
+            None => match self.iter.next() {
+                Some(ch) => match ch {
+                    65..=90 => { //uppercase
+                        self.store = Some(ch+32);
+                        Some(self.cap_symbol)
+                    }
+                    _ => Some(ch)
+                }
+                None => None
+            }
         }
     }
 }
 
 #[test]
 fn iter_basics() {
-    let xi = b"abc".to_vec().into_iter();
-    let mut it = Capsif::new(xi);
-    assert_eq!(it.next(), Some(b'a'));
-    assert_eq!(it.next(), Some(b'b'));
-    assert_eq!(it.next(), Some(b'c'));
+    let input = b"this is a Test for Capsif. Are capS escaped correctlY?".to_vec().into_iter();
+    let it = Capsif::new(input, b'^');
 
-    for (n, x) in it.enumerate() {
-        assert_eq!(13,x);
-        if n==100 { break; }
-    }
+    let output: Vec<u8> = it.collect();
+    assert_eq!("this is a ^test for ^capsif. ^are cap^s escaped correctl^y?", String::from_utf8_lossy(&output));
 }
 
 //----------------//
