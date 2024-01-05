@@ -1,19 +1,19 @@
-use std::collections::VecDeque;
-
-struct Capsif {
-    akku: VecDeque<u8>
+struct Capsif<I> {
+    iter: I
 }
 
-impl Capsif {
-    pub fn new(input: Vec<u8>) -> Self {
-        Self { akku: VecDeque::from(input) }
+impl<I> Capsif<I> {
+    pub fn new(iter: I) -> Self {
+        Self { iter }
     }
 }
 
-impl Iterator for Capsif {
+impl<I> Iterator for Capsif<I>
+where I: Iterator<Item=u8>
+{
     type Item = u8;
     fn next(&mut self) -> Option<u8> {
-        match self.akku.pop_front() {
+        match self.iter.next() {
             Some(b) => Some(b),
             _ => Some(13)
         }
@@ -22,7 +22,8 @@ impl Iterator for Capsif {
 
 #[test]
 fn iter_basics() {
-    let mut it = Capsif::new(b"abc".to_vec());
+    let xi = b"abc".to_vec().into_iter();
+    let mut it = Capsif::new(xi);
     assert_eq!(it.next(), Some(b'a'));
     assert_eq!(it.next(), Some(b'b'));
     assert_eq!(it.next(), Some(b'c'));
