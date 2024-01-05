@@ -1,3 +1,5 @@
+// adapte structure heavily inspired by https://janmr.com/blog/2021/01/rust-and-iterator-adapters/
+
 struct Capsif<I> {
     iter: I,
     cap_symbol: u8,
@@ -5,7 +7,6 @@ struct Capsif<I> {
 }
 
 impl<I> Capsif<I> {
-    #[cfg(test)]
     pub fn new(iter: I, cap_symbol: u8) -> Self {
         Self { iter, cap_symbol, store: None }
     }
@@ -37,12 +38,18 @@ where I: Iterator<Item=u8>
     }
 }
 
+trait CapsifyIterator: Sized {
+    fn capsify(self, cap_symbol: u8) -> Capsif<Self> {
+        Capsif::new(self, cap_symbol)
+    }
+}
+
+impl<I: Iterator> CapsifyIterator for I {}
+
 #[test]
 fn iter_basics() {
     let input = b"this is a Test for Capsif. Are capS escaped correctlY?".to_vec().into_iter();
-    let it = Capsif::new(input, b'^');
-
-    let output: Vec<u8> = it.collect();
+    let output: Vec<u8> = input.capsify(b'^').collect();
     assert_eq!("this is a ^test for ^capsif. ^are cap^s escaped correctl^y?", String::from_utf8_lossy(&output));
 }
 
