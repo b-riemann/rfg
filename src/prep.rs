@@ -8,24 +8,13 @@ pub struct Capsif<I> {
     store: Option<u8>
 }
 
-impl<I> Capsif<I> {
-    pub fn new(iter: I, cap_symbol: u8) -> Self {
-        Self { iter, cap_symbol, store: None }
-    }
-    fn pop_stored(&mut self) -> Option<u8> {
-        let x = self.store;
-        self.store = None;
-        x
-    }
-}
-
 impl<I> Iterator for Capsif<I>
 where I: Iterator<Item=u8>
 {
     type Item = u8;
     fn next(&mut self) -> Option<u8> {
         match self.store {
-            Some(_) => self.pop_stored(),
+            Some(x) => { self.store = None; Some(x) }
             None => match self.iter.next() {
                 Some(ch) => match ch {
                     65..=90 => { //uppercase
@@ -42,7 +31,7 @@ where I: Iterator<Item=u8>
 
 pub trait CapsifyIterator: Sized {
     fn capsify(self, cap_symbol: u8) -> Capsif<Self> {
-        Capsif::new(self, cap_symbol)
+        Capsif { iter: self, cap_symbol, store: None }
     }
 }
 impl<I: Iterator> CapsifyIterator for I {}
@@ -80,12 +69,6 @@ pub struct XmlTerminator<I> {
     term_symbol: u8,
     envs: Vec<Vec<u8>>,
     itercache: VecDeque<u8>
-}
-
-impl<I> XmlTerminator<I> {
-    pub fn new(iter: I, term_symbol: u8) -> Self {
-        Self { iter, term_symbol, envs: Vec::new(), itercache: VecDeque::new() }
-    }
 }
 
 impl<I> XmlTerminator<I>
@@ -143,7 +126,7 @@ where I: Iterator<Item=u8>
 
 pub trait XmltIterator: Sized {
     fn xml_terminate(self, term_symbol: u8) -> XmlTerminator<Self> {
-        XmlTerminator::new(self, term_symbol)
+        XmlTerminator { iter: self, term_symbol, envs: Vec::new(), itercache: VecDeque::new() }
     }
 }
 impl<I: Iterator> XmltIterator for I {}
@@ -155,7 +138,6 @@ fn capsify_uncapsify() {
     assert_eq!("this is a ^test for ^capsif. ^are cap^s escaped correctl^y?", String::from_utf8_lossy(&capsified));
     let output: Vec<u8> = capsified.into_iter().uncapsify(b'^').collect();
     assert_eq!(String::from_utf8_lossy(&input), String::from_utf8_lossy(&output));
-
 }
 
 #[test]
