@@ -3,7 +3,6 @@ use std::fs::{read,write};
 use std::io::{Result, ErrorKind, Error};
 use std::env;
 use std::path::Path;
-use std::collections::HashSet;
 
 mod huffman;
 use huffman::{count_freqs, entropy_info, encode, decode, HuffmanNode};
@@ -25,24 +24,8 @@ fn write_u16<P>(path: P, contents: Vec<u16>) -> Result<()> where P: AsRef<Path> 
     write(path, contents_u8)
 }
 
-
-fn order_symbols(symbols: HashSet<u8>) -> Vec<u8> {
-    let mut s : Vec<u8> = symbols.into_iter().collect();
-    s.sort_by(|a,b| a.cmp(b));
-    s
-}
-
-pub fn unused_symbols(content: &[u8]) -> Vec<u8> {
-    let mut symbols: HashSet<u8> = HashSet::from_iter(0..=255u8);
-    for ch in content {
-        symbols.remove(&ch);
-    }
-    order_symbols(symbols)
-}
-
 fn main() -> Result<()> {
     const ENWIK9: &str = "../enwik9";
-    const UNUSED_FILE: &str = "unused.u8";
     let prepd_file = "out/enwik.prepd";
     let probcodes_file = "out/probcodes.u8";
     let probcodes_file_d = "out/probcodes.u8.d";
@@ -55,26 +38,21 @@ fn main() -> Result<()> {
     args.next();
 
     match args.next().unwrap().as_str() {
-        "unused<-enwik"=> {
-            let file = read(ENWIK9)?;
-            let unused = unused_symbols(&file);
-            write(UNUSED_FILE, unused)
-        }
         "prepd<-enwik" => {
             let max_len = usize::from_str_radix(&args.next().unwrap(), 10).unwrap();
             let mut input = read(ENWIK9)?;
             input.truncate(max_len);
 
-            let unused = read(UNUSED_FILE)?;
-            let mut out: Vec<u8> = input.into_iter().capsify(unused[0]).xml_terminate(unused[1]).collect();
-            out.reverse();
+            //by running through capsify first, we can use A-Z as escape codes, which is nice for display purposes
+            let out: Vec<u8> = input.into_iter().capsify(b'C').xml_terminate(b'E').collect();
 
             write(prepd_file, &out)
         }
         "probencode<-" => {
             let prepd_filename = args.next().unwrap();
 
-            let prepd = read(prepd_filename).unwrap();
+            let mut prepd = read(prepd_filename).unwrap();
+            prepd.reverse();
             let probcodes = prob_encode(prepd);
             write(probcodes_file, probcodes)
         }
@@ -192,7 +170,6 @@ fn main() -> Result<()> {
         //     let mut input = read(prepd_file.to_owned()+".d")?;
         //     input.reverse(); 
             
-        //     let unused = read(UNUSED_FILE)?;
         //     let out = unprepare(&input, &unused);
 
         //     write(filename, out)
