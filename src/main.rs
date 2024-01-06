@@ -164,14 +164,40 @@ fn main() -> Result<()> {
             let prepd = prob_decode(&probcodes);
             write(filename, prepd)
         }
+        "display<>" => {
+            let filename = args.next().unwrap();
+
+            let prepd = read(prepd_file)?.into_iter();
+            let mut probcodes = read(probcodes_file)?.into_iter();
+
+            let pmap = b".123456789abcdef";
+
+            let mut probdisplay = Vec::new();
+            let mut contents = vec![b' '];
+
+            for ch in prepd {
+                let pn = probcodes.next().unwrap();
+                probdisplay.push( match pn {
+                    0..=15 => pmap[pn as usize],
+                    _ => b'!'
+                });
+                contents.push(ch);
+                match ch {
+                    b'\n' => {
+                        probdisplay.extend([b'\n', b' ']);
+                        contents.push(b'>');
+                        contents.extend(probdisplay.clone());
+                        probdisplay.clear();
+                    }
+                    _ => ()
+                }
+            }
+            write(filename, contents)
+        }
         // "unprep->" => {
         //     let filename = args.next().unwrap();
-
         //     let mut input = read(prepd_file.to_owned()+".d")?;
-        //     input.reverse(); 
-            
-        //     let out = unprepare(&input, &unused);
-
+        //     ...
         //     write(filename, out)
         // }
         x => Err( Error::new(ErrorKind::NotFound, format!("unknown mode {x}")) )
