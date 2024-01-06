@@ -1,5 +1,7 @@
 // adapte structure heavily inspired by https://janmr.com/blog/2021/01/rust-and-iterator-adapters/
 
+use std::collections::VecDeque;
+
 struct Capsif<I> {
     iter: I,
     cap_symbol: u8,
@@ -43,14 +45,93 @@ trait CapsifyIterator: Sized {
         Capsif::new(self, cap_symbol)
     }
 }
-
 impl<I: Iterator> CapsifyIterator for I {}
 
+struct XmlTerminator<I> {
+    iter: I,
+    term_symbol: u8,
+    envs: Vec<Vec<u8>>,
+    itercache: VecDeque<u8>
+}
+
+impl<I> XmlTerminator<I> {
+    pub fn new(iter: I, term_symbol: u8) -> Self {
+        Self { iter, term_symbol, envs: Vec::new(), itercache: VecDeque::new() }
+    }
+}
+
+impl<I> XmlTerminator<I>
+where I: Iterator<Item=u8>
+{
+    fn pop_cache(&mut self) -> Option<u8> {
+        if self.itercache.is_empty() {
+            self.iter.next()
+        } else {
+            self.itercache.pop_front()
+        }
+    }    
+}
+
+impl<I> Iterator for XmlTerminator<I>
+where I: Iterator<Item=u8>
+{
+    type Item = u8;
+    fn next(&mut self) -> Option<u8> {
+        let och = self.pop_cache();
+        match och {
+            Some(b'<') => {
+                let mut tag = vec![b'<'];
+                loop {
+                    match self.pop_cache().expect("stream should not stop in middle of tag") {
+                        b'>' => break,
+                        x => tag.push(x)
+                    }
+                }
+                if tag[1] == b'/' { // </xml
+                    let opener = self.envs.pop().unwrap();
+                    assert_eq!(tag[2..], opener[1..tag.len()-1]);
+                    Some(self.term_symbol)
+                } else if tag.last().unwrap() == &b'/' { // <xml/
+                    tag.push(b'>');
+                    self.itercache.extend(tag);
+                    self.pop_cache()
+                } else { // <xml abc> -> xml
+                    self.itercache.extend(tag.clone());
+                    match tag.clone().into_iter().position(|c| c==b' ') {
+                        Some(n) => tag.truncate(n),
+                        None => ()
+                    };
+                    self.itercache.push_back(b'>');
+                    tag.push(b'>');
+                    self.envs.push(tag);
+
+                    self.pop_cache()
+                }
+            },
+            x => x
+        }
+    }  
+}
+
+trait XmltIterator: Sized {
+    fn xml_terminate(self, term_symbol: u8) -> XmlTerminator<Self> {
+        XmlTerminator::new(self, term_symbol)
+    }
+}
+impl<I: Iterator> XmltIterator for I {}
+
 #[test]
-fn iter_basics() {
+fn caps_stream() {
     let input = b"this is a Test for Capsif. Are capS escaped correctlY?".to_vec().into_iter();
     let output: Vec<u8> = input.capsify(b'^').collect();
     assert_eq!("this is a ^test for ^capsif. ^are cap^s escaped correctl^y?", String::from_utf8_lossy(&output));
+}
+
+#[test]
+fn xmlt_stream() {
+    let input = b"this<page> is a Test for <title>XMLT</title>. <one tag><another tag/>It removes<third tg 2start>closing xml environments by an</third>escape character.</one></page>".to_vec().into_iter();
+    let output: Vec<u8> = input.xml_terminate(b'+').collect();
+    assert_eq!("this<page> is a Test for <title>XMLT+. <one tag><another tag/>It removes<third tg 2start>closing xml environments by an+escape character.++", String::from_utf8_lossy(&output));
 }
 
 //----------------//
