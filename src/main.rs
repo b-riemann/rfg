@@ -12,7 +12,7 @@ mod prob;
 use prob::{encode as prob_encode, decode as prob_decode};
 
 mod prep;
-use prep::{prepare, unprepare};
+use prep::{CapsifyIterator, XmltIterator};
 
 fn read_u16<P>(path: P) -> Result<Vec<u16>> where P: AsRef<Path> {
     let contents = read(path)?;
@@ -66,7 +66,7 @@ fn main() -> Result<()> {
             input.truncate(max_len);
 
             let unused = read(UNUSED_FILE)?;
-            let mut out = prepare(&input, &unused);
+            let mut out: Vec<u8> = input.into_iter().capsify(unused[0]).xml_terminate(unused[1]).collect();
             out.reverse();
 
             write(prepd_file, &out)
@@ -186,17 +186,17 @@ fn main() -> Result<()> {
             let prepd = prob_decode(&probcodes);
             write(filename, prepd)
         }
-        "unprep->" => {
-            let filename = args.next().unwrap();
+        // "unprep->" => {
+        //     let filename = args.next().unwrap();
 
-            let mut input = read(prepd_file.to_owned()+".d")?;
-            input.reverse(); 
+        //     let mut input = read(prepd_file.to_owned()+".d")?;
+        //     input.reverse(); 
             
-            let unused = read(UNUSED_FILE)?;
-            let out = unprepare(&input, &unused);
+        //     let unused = read(UNUSED_FILE)?;
+        //     let out = unprepare(&input, &unused);
 
-            write(filename, out)
-        }
+        //     write(filename, out)
+        // }
         x => Err( Error::new(ErrorKind::NotFound, format!("unknown mode {x}")) )
     }
 }
