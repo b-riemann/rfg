@@ -176,9 +176,9 @@ fn main() -> Result<()> {
             let mut contents = vec![b' '];
 
             for ch in prepd {
-                let pn = probcodes.next().unwrap();
-                probdisplay.push( match pn {
-                    0..=15 => pmap[pn as usize],
+                let index = probcodes.next().unwrap() as usize;
+                probdisplay.push( match pmap.get(index) {
+                    Some(&ch) => ch,
                     _ => b'!'
                 });
                 contents.push(ch);
