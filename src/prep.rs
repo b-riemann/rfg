@@ -87,15 +87,13 @@ where I: Iterator<Item=u8>
         }
     }
 
-    fn extend(&mut self, tag: &[u8]) {
-        self.itercache.extend(tag)
+    fn extend_with_end(&mut self, tag: &[u8]) {
+        self.itercache.extend(tag);
+        self.itercache.push_back(b'>')
     }
 
-    fn push(&mut self, ch: u8) {
-        self.itercache.push_back(ch)
-    }
-
-    fn push_env(&mut self, tag: Vec<u8>) {
+    fn push_env_with_end(&mut self, mut tag: Vec<u8>) {
+        tag.push(b'>');
         self.envs.push(tag)
     }
 
@@ -116,21 +114,16 @@ where I: Iterator<Item=u8>
 
     fn singular_or_opener(&mut self, mut tag: Vec<u8>) -> Option<u8> {
         if tag.last().unwrap() == &b'/' { // <xml/
-            tag.push(b'>');
-            self.extend(&tag);
-            self.pop()
+            self.extend_with_end(&tag);
         } else { // <xml abc> -> xml
-            self.extend(&tag.clone());
+            self.extend_with_end(&tag);
             match tag.clone().into_iter().position(|c| c==b' ') {
                 Some(n) => tag.truncate(n),
                 None => ()
             };
-            self.push(b'>');
-            tag.push(b'>');
-            self.push_env(tag);
-    
-            self.pop()
+            self.push_env_with_end(tag);
         }
+        self.pop()
     }
 }
 
