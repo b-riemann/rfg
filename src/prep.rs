@@ -64,23 +64,79 @@ pub trait UnCapsifyIterator: Sized {
 }
 impl<I: Iterator> UnCapsifyIterator for I {}
 
-pub struct XmlTerminator<I> {
+struct EnvIterator<I> {
     iter: I,
-    term_symbol: u8,
     envs: Vec<Vec<u8>>,
     itercache: VecDeque<u8>
 }
 
-impl<I> XmlTerminator<I>
+impl<I> EnvIterator<I> {
+    fn new(iter: I) -> Self {
+        Self{ iter, envs: Vec::new(), itercache: VecDeque::new() }
+    }
+}
+
+impl<I> EnvIterator<I>
 where I: Iterator<Item=u8>
 {
-    fn pop_cache(&mut self) -> Option<u8> {
+    fn pop(&mut self) -> Option<u8> {
         if self.itercache.is_empty() {
             self.iter.next()
         } else {
             self.itercache.pop_front()
         }
-    }    
+    }
+
+    fn extend(&mut self, tag: &[u8]) {
+        self.itercache.extend(tag)
+    }
+
+    fn push(&mut self, ch: u8) {
+        self.itercache.push_back(ch)
+    }
+
+    fn push_env(&mut self, tag: Vec<u8>) {
+        self.envs.push(tag)
+    }
+
+    fn pop_env(&mut self) -> Vec<u8> {
+        self.envs.pop().unwrap()
+    }
+
+    fn get_next_tag(&mut self) -> Vec<u8> {
+        let mut tag = vec![b'<'];
+        loop {
+            match self.pop().expect("stream should not stop in middle of tag") {
+                b'>' => break,
+                x => tag.push(x)
+            }
+        }
+        tag
+    }
+
+    fn singular_or_opener(&mut self, mut tag: Vec<u8>) -> Option<u8> {
+        if tag.last().unwrap() == &b'/' { // <xml/
+            tag.push(b'>');
+            self.extend(&tag);
+            self.pop()
+        } else { // <xml abc> -> xml
+            self.extend(&tag.clone());
+            match tag.clone().into_iter().position(|c| c==b' ') {
+                Some(n) => tag.truncate(n),
+                None => ()
+            };
+            self.push(b'>');
+            tag.push(b'>');
+            self.push_env(tag);
+    
+            self.pop()
+        }
+    }
+}
+
+pub struct XmlTerminator<I> {
+    envi: EnvIterator<I>,
+    term_symbol: u8
 }
 
 impl<I> Iterator for XmlTerminator<I>
@@ -88,35 +144,16 @@ where I: Iterator<Item=u8>
 {
     type Item = u8;
     fn next(&mut self) -> Option<u8> {
-        let och = self.pop_cache();
+        let och = self.envi.pop();
         match och {
             Some(b'<') => {
-                let mut tag = vec![b'<'];
-                loop {
-                    match self.pop_cache().expect("stream should not stop in middle of tag") {
-                        b'>' => break,
-                        x => tag.push(x)
-                    }
-                }
+                let tag = self.envi.get_next_tag();
                 if tag[1] == b'/' { // </xml
-                    let opener = self.envs.pop().unwrap();
+                    let opener = self.envi.pop_env();
                     assert_eq!(tag[2..], opener[1..tag.len()-1]);
                     Some(self.term_symbol)
-                } else if tag.last().unwrap() == &b'/' { // <xml/
-                    tag.push(b'>');
-                    self.itercache.extend(tag);
-                    self.pop_cache()
-                } else { // <xml abc> -> xml
-                    self.itercache.extend(tag.clone());
-                    match tag.clone().into_iter().position(|c| c==b' ') {
-                        Some(n) => tag.truncate(n),
-                        None => ()
-                    };
-                    self.itercache.push_back(b'>');
-                    tag.push(b'>');
-                    self.envs.push(tag);
-
-                    self.pop_cache()
+                } else {
+                    self.envi.singular_or_opener(tag)
                 }
             },
             x => x
@@ -126,7 +163,7 @@ where I: Iterator<Item=u8>
 
 pub trait XmltIterator: Sized {
     fn xml_terminate(self, term_symbol: u8) -> XmlTerminator<Self> {
-        XmlTerminator { iter: self, term_symbol, envs: Vec::new(), itercache: VecDeque::new() }
+        XmlTerminator { envi: EnvIterator::new(self), term_symbol }
     }
 }
 impl<I: Iterator> XmltIterator for I {}
