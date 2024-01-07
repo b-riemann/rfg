@@ -161,6 +161,44 @@ pub trait XmltIterator: Sized {
 }
 impl<I: Iterator> XmltIterator for I {}
 
+pub struct XmlUnterminator<I> {
+    envi: EnvIterator<I>,
+    term_symbol: u8
+}
+
+
+impl<I> Iterator for XmlUnterminator<I>
+where I: Iterator<Item=u8>
+{
+    type Item = u8;
+    fn next(&mut self) -> Option<u8> {
+        let och = self.envi.pop();
+        match och {
+            Some(b'<') => {
+                let tag = self.envi.get_next_tag();
+                self.envi.singular_or_opener(tag)
+            }
+            Some(x) => if x == self.term_symbol {
+                let opener = self.envi.pop_env();
+                let mut tag = b"</".to_vec();
+                tag.extend(&opener[1..opener.len()-1]);
+                self.envi.extend_with_end(&tag);
+                self.envi.pop()
+            } else {
+                Some(x)
+            }
+            None => None
+        }
+    }  
+}
+
+pub trait XmlutIterator: Sized {
+    fn xml_unterminate(self, term_symbol: u8) -> XmlUnterminator<Self> {
+        XmlUnterminator { envi: EnvIterator::new(self), term_symbol }
+    }
+}
+impl<I: Iterator> XmlutIterator for I {}
+
 #[test]
 fn capsify_uncapsify() {
     let input = b"this is a Test for Capsif. Are capS escaped correctlY?".to_vec();
@@ -171,8 +209,10 @@ fn capsify_uncapsify() {
 }
 
 #[test]
-fn xmlt_stream() {
-    let input = b"this<page> is a Test for <title>XMLT</title>. <one tag><another tag/>It removes<third tg 2start>closing xml environments by an</third>escape character.</one></page>".to_vec().into_iter();
-    let output: Vec<u8> = input.xml_terminate(b'+').collect();
-    assert_eq!("this<page> is a Test for <title>XMLT+. <one tag><another tag/>It removes<third tg 2start>closing xml environments by an+escape character.++", String::from_utf8_lossy(&output));
+fn xml_terminate_unterminate() {
+    let input = b"this<page> is a Test for <title>XMLT</title>. <one tag><another tag/>It removes<third tg 2start>closing xml environments by an</third>escape character.</one></page>".to_vec();
+    let xml_terminated: Vec<u8> = input.clone().into_iter().xml_terminate(b'+').collect();
+    assert_eq!("this<page> is a Test for <title>XMLT+. <one tag><another tag/>It removes<third tg 2start>closing xml environments by an+escape character.++", String::from_utf8_lossy(&xml_terminated));
+    let output: Vec<u8> = xml_terminated.into_iter().xml_unterminate(b'+').collect();
+    assert_eq!(String::from_utf8_lossy(&input), String::from_utf8_lossy(&output));
 }
