@@ -13,6 +13,8 @@ use prob::{encode as prob_encode, decode as prob_decode};
 mod prep;
 use prep::{CapsifyIterator, XmltIterator};
 
+use crate::prep::{XmlutIterator, UnCapsifyIterator};
+
 fn read_u16<P>(path: P) -> Result<Vec<u16>> where P: AsRef<Path> {
     let contents = read(path)?;
     let contents_u16: Vec<u16> = contents.chunks_exact(2).map(|bytes| u16::from_le_bytes([bytes[0],bytes[1]])).collect();
@@ -196,12 +198,14 @@ fn main() -> Result<()> {
             }
             write(filename, contents)
         }
-        // "unprep->" => {
-        //     let filename = args.next().unwrap();
-        //     let mut input = read(prepd_file.to_owned()+".d")?;
-        //     ...
-        //     write(filename, out)
-        // }
+        "unprep->" => {
+            let filename = args.next().unwrap();
+            let input = read(prepd_file.to_owned()+".d")?;
+            
+            let unused = read("unused.u8")?;
+            let contents: Vec<u8> = input.into_iter().xml_unterminate(unused[1]).uncapsify(unused[0]).collect();
+            write(filename, contents)
+        }
         x => Err( Error::new(ErrorKind::NotFound, format!("unknown mode {x}")) )
     }
 }
