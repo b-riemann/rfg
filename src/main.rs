@@ -43,8 +43,10 @@ fn main() -> Result<()> {
             let mut input = read(ENWIK9)?;
             input.truncate(max_len);
 
+            let unused = read("unused.u8")?;
             //by running through capsify first, we can use A-Z as escape codes, which is nice for display purposes
-            let out: Vec<u8> = input.into_iter().capsify(b'C').xml_terminate(b'E').collect();
+            //let out: Vec<u8> = input.into_iter().capsify(b'C').xml_terminate(b'E').collect();
+            let out: Vec<u8> = input.into_iter().capsify(unused[0]).xml_terminate(unused[1]).collect();
 
             write(prepd_file, &out)
         }
